@@ -1,0 +1,17 @@
+include LICENSE
+include README.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include pyproject.toml
+
+recursive-include grubeta *.py
+recursive-include tests *.py
+recursive-include examples *.py *.ipynb
+recursive-include docs *.rst *.py *.md
+
+prune docs/_build
+prune .github
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.so
+global-exclude .DS_Store

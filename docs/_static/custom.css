@@ -1,0 +1,78 @@
+/* Custom styles for GRU Dynamic Beta documentation */
+
+/* Improve code block readability */
+.highlight {
+    background: #f8f8f8;
+    border-radius: 4px;
+}
+
+/* Style for admonitions */
+.admonition {
+    border-radius: 4px;
+}
+
+/* Style for tables */
+table.docutils {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+table.docutils td, table.docutils th {
+    padding: 8px 12px;
+    border: 1px solid #e1e4e5;
+}
+
+table.docutils th {
+    background-color: #f0f0f0;
+}
+
+/* Improve parameter lists */
+dl.field-list > dt {
+    font-weight: bold;
+    padding: 4px 0;
+}
+
+/* Math blocks */
+div.math {
+    background: #f8f8f8;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+/* API class styling */
+dl.class > dt {
+    font-size: 1.1em;
+    background: #e7f2fa;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+/* Method styling */
+dl.method > dt {
+    background: #f8f8f8;
+    padding: 4px 8px;
+    margin-top: 10px;
+}
+
+/* Version badge */
+.version-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #27ae60;
+    color: white;
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+
+/* Responsive improvements */
+@media screen and (max-width: 768px) {
+    .wy-nav-content {
+        padding: 1em;
+    }
+    
+    table.docutils {
+        display: block;
+        overflow-x: auto;
+    }
+}
