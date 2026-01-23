@@ -9,12 +9,12 @@
 
 ## Key Features
 
-- 🧠 **GRU-based estimation**: Captures complex temporal patterns in beta dynamics
-- 📊 **Walk-forward validation**: Prevents lookahead bias with proper out-of-sample testing
-- ⚖️ **Composite loss function**: Balances prediction accuracy, beta stability, and alpha sparsity
-- 🔧 **Flexible input modes**: Use simple returns or full feature engineering
-- 📈 **Built-in evaluation**: Comprehensive metrics and benchmark comparisons
-- 🚀 **Production-ready**: GPU support, model persistence, and extensive documentation
+-  **GRU-based estimation**: Captures complex temporal patterns in beta dynamics
+-  **Walk-forward validation**: Prevents lookahead bias with proper out-of-sample testing
+-  **Composite loss function**: Balances prediction accuracy, beta stability, and alpha sparsity
+-  **Flexible input modes**: Use simple returns or full feature engineering
+-  **Built-in evaluation**: Comprehensive metrics and benchmark comparisons
+-  **Production-ready**: GPU support, model persistence, and extensive documentation
 
 ## Installation
 
@@ -359,10 +359,10 @@ plt.show()
 If you use GRU Dynamic Beta in your research, please cite:
 
 ```bibtex
-@software{grubeta2025,
+@software{grubeta2026,
   author = {Yılmaz, Ahmet Selim},
   title = {GRU Dynamic Beta: Neural Network-Based Time-Varying Systematic Risk Estimation},
-  year = {2025},
+  year = {2026},
   url = {https://github.com/aslmylmz/grubeta}
 }
 ```
