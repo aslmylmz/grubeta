@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grubeta"
-version = "0.1.0"
+version = "0.1.1"
 description = "GRU-based Dynamic Beta Estimation for Time-Varying Systematic Risk"
 readme = "README.md"
 license = {text = "MIT"}
