@@ -359,10 +359,10 @@ plt.show()
 If you use GRU Dynamic Beta in your research, please cite:
 
 ```bibtex
-@software{grubeta2025,
+@software{grubeta2026,
   author = {Yılmaz, Ahmet Selim},
   title = {GRU Dynamic Beta: Neural Network-Based Time-Varying Systematic Risk Estimation},
-  year = {2025},
+  year = {2026},
   url = {https://github.com/aslmylmz/grubeta}
 }
 ```
