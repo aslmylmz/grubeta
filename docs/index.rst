@@ -5,10 +5,6 @@ GRU Dynamic Beta
    :target: https://badge.fury.io/py/grubeta
    :alt: PyPI version
 
-.. image:: https://img.shields.io/pypi/pyversions/grubeta.svg
-   :target: https://pypi.org/project/grubeta/
-   :alt: Python versions
-
 .. image:: https://readthedocs.org/projects/grubeta/badge/?version=latest
    :target: https://grubeta.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
@@ -54,18 +50,22 @@ Basic usage:
 .. code-block:: python
 
    import pandas as pd
+   import numpy as np
    from grubeta import DynamicBeta
-   
-   # Load your data
-   stock_returns = pd.read_csv('stock.csv')['return']
-   market_returns = pd.read_csv('market.csv')['return']
-   
-   # Estimate dynamic beta
+
+   # 1. Generate dummy data so the example "just works"
+   dates = pd.date_range('2020-01-01', periods=1000)
+   market_returns = np.random.normal(0.0005, 0.01, 1000)
+   # Stock return = beta * market + noise (simulating a beta of 1.2)
+   stock_returns = 1.2 * market_returns + np.random.normal(0, 0.005, 1000)
+
+   # 2. Fit and predict
    model = DynamicBeta(lookback=60)
-   results = model.fit_predict(stock_returns, market_returns)
+   results = model.fit_predict(stock_returns, market_returns, dates=dates)
    
-   # View results
-   print(results[['beta', 'alpha']].dropna().describe())
+   # 3. See the results
+   print(results.tail())
+   model.plot_beta(results)
 
 Documentation
 -------------
