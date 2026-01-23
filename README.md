@@ -46,21 +46,22 @@ The simplest way to estimate dynamic beta using only stock and market returns:
 
 ```python
 import pandas as pd
+import numpy as np
 from grubeta import DynamicBeta
 
-# Load your data
-stock_returns = pd.read_csv('stock_data.csv')['return']
-market_returns = pd.read_csv('market_data.csv')['return']
+# 1. Generate dummy data so the example "just works"
+dates = pd.date_range('2020-01-01', periods=1000)
+market_returns = np.random.normal(0.0005, 0.01, 1000)
+# Stock return = beta * market + noise (simulating a beta of 1.2)
+stock_returns = 1.2 * market_returns + np.random.normal(0, 0.005, 1000)
 
-# Estimate dynamic beta
+# 2. Fit and predict
 model = DynamicBeta(lookback=60)
-results = model.fit_predict(stock_returns, market_returns)
+results = model.fit_predict(stock_returns, market_returns, dates=dates)
 
-# View results
-print(results[['beta', 'alpha']].dropna().describe())
-
-# Plot beta evolution
-model.plot_beta(results, title='Dynamic Beta - AAPL')
+# 3. See the results
+print(results.tail())
+model.plot_beta(results)
 ```
 
 ### Advanced Usage (With Features)
