@@ -33,12 +33,12 @@ risk (beta) using Gated Recurrent Unit neural networks within the CAPM framework
 Key Features
 ------------
 
-* 🧠 **GRU-based estimation** - Captures complex temporal patterns in beta dynamics
-* 📊 **Walk-forward validation** - Prevents lookahead bias with proper out-of-sample testing  
-* ⚖️ **Composite loss function** - Balances prediction accuracy, beta stability, and alpha sparsity
-* 🔧 **Flexible input modes** - Use simple returns or full feature engineering
-* 📈 **Built-in evaluation** - Comprehensive metrics and benchmark comparisons
-* 🚀 **Production-ready** - GPU support, model persistence, and extensive documentation
+* **GRU-based estimation** - Captures complex temporal patterns in beta dynamics
+* **Walk-forward validation** - Prevents lookahead bias with proper out-of-sample testing  
+* **Composite loss function** - Balances prediction accuracy, beta stability, and alpha sparsity
+* **Flexible input modes** - Use simple returns or full feature engineering
+* **Built-in evaluation** - Comprehensive metrics and benchmark comparisons
+* **Production-ready** - GPU support, model persistence, and extensive documentation
 
 Quick Start
 -----------
