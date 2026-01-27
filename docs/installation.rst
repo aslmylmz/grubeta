@@ -45,7 +45,7 @@ For development or contributing:
 .. code-block:: bash
 
    # Clone the repository
-   git clone https://github.com/yourusername/grubeta.git
+   git clone https://github.com/aslmylmz/grubeta.git
    cd grubeta
    
    # Create virtual environment
