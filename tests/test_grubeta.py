@@ -96,15 +96,15 @@ class TestDynamicBetaConfig:
     
     def test_validation_lookback(self):
         """Test lookback validation."""
-        config = DynamicBetaConfig(lookback=5)
-        with pytest.raises(ValueError, match="lookback must be >= 10"):
-            config.validate()
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            DynamicBetaConfig(lookback=5)
     
     def test_validation_learning_rate(self):
         """Test learning rate validation."""
-        config = DynamicBetaConfig(learning_rate=2.0)
-        with pytest.raises(ValueError, match="learning_rate must be between"):
-            config.validate()
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            DynamicBetaConfig(learning_rate=2.0)
 
 
 # =============================================================================

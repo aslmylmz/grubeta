@@ -2,7 +2,7 @@
 GRU Dynamic Beta - Time-Varying Systematic Risk Estimation
 ==========================================================
 
-A neural network-based library for estimating time-varying beta within 
+A neural network-based library for estimating time-varying beta within
 the CAPM framework using Gated Recurrent Units (GRU).
 
 Quick Start
@@ -35,17 +35,17 @@ __author__ = "Ahmet Selim Yılmaz"
 __license__ = "MIT"
 
 from grubeta.core import DynamicBeta, DynamicBetaConfig
-from grubeta.preprocessing import DataPreprocessor, FeatureConfig
-from grubeta.models import GRUBetaModel
 from grubeta.evaluation import BetaEvaluator
-from grubeta.utils import validate_no_lookahead, rolling_ols_beta
+from grubeta.models import GRUBetaModel, TFEnvironment, extract_last_step
+from grubeta.preprocessing import DataPreprocessor, FeatureConfig
+from grubeta.utils import rolling_ols_beta, validate_no_lookahead
 
 __all__ = [
     # Core API
     "DynamicBeta",
     "DynamicBetaConfig",
     # Preprocessing
-    "DataPreprocessor", 
+    "DataPreprocessor",
     "FeatureConfig",
     # Advanced
     "GRUBetaModel",
@@ -53,4 +53,6 @@ __all__ = [
     # Utilities
     "validate_no_lookahead",
     "rolling_ols_beta",
+    "TFEnvironment",
+    "extract_last_step",
 ]

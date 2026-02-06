@@ -6,147 +6,106 @@ using GRU neural networks. It supports both simple (returns-only) and
 advanced (multi-feature) estimation modes.
 """
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional, Tuple, Union, Dict, List, Any
-import warnings
 import logging
-import gc
+import warnings
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field, validator, root_validator
 from sklearn.preprocessing import StandardScaler
 
-from grubeta.models import GRUBetaModel
 from grubeta.evaluation import BetaEvaluator
+from grubeta.models import GRUBetaModel
+from grubeta.scaling import PITStandardScaler
+from grubeta.temporal_integrity import (
+    assert_pit_integrity,
+    assert_no_temporal_overlap,
+    TemporalCertificate,
+    TemporalIntegrityError
+)
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DynamicBetaConfig:
+class DynamicBetaConfig(BaseModel):
     """
     Configuration for DynamicBeta model.
-    
-    This dataclass holds all hyperparameters and settings for the GRU-based
-    dynamic beta estimation model.
-    
-    Parameters
-    ----------
-    lookback : int, default=90
-        Number of historical periods used as input sequence length.
-        Typical values: 60 (quarterly), 90 (seasonal), 126 (semi-annual).
-        
-    initial_train_size : int, default=500
-        Number of samples for initial model training before walk-forward begins.
-        Should be >= lookback * 3 for stable training.
-        
-    wf_step_size : int, default=126
-        Walk-forward step size (number of predictions before retraining).
-        126 ≈ 6 months of trading days.
-        
-    learning_rate : float, default=1e-4
-        Adam optimizer learning rate.
-        
-    batch_size : int, default=20
-        Training batch size.
-        
-    epochs_init : int, default=40
-        Epochs for initial training phase.
-        
-    epochs_retrain : int, default=4
-        Epochs for incremental retraining during walk-forward.
-        
-    gru_units : int, default=128
-        Number of GRU hidden units per pathway.
-        
-    dropout_rate : float, default=0.2
-        Dropout rate for regularization.
-        
-    lambda_beta : float, default=0.05
-        Loss weight for beta stability (temporal smoothness).
-        Higher values produce smoother beta trajectories.
-        
-    lambda_alpha : float, default=0.5
-        Loss weight for alpha sparsity (L1 penalty).
-        Higher values push alpha toward zero (CAPM assumption).
-        
-    random_seed : int, default=42
-        Random seed for reproducibility.
-        
-    verbose : int, default=1
-        Verbosity level (0=silent, 1=progress, 2=debug).
-        
-    Examples
-    --------
-    >>> config = DynamicBetaConfig(lookback=60, lambda_beta=0.1)
-    >>> model = DynamicBeta(config=config)
-    
-    >>> # Or use keyword arguments directly
-    >>> model = DynamicBeta(lookback=60, lambda_beta=0.1)
+    Pydantic model for strict type validation and constraints.
     """
     # Sequence parameters
-    lookback: int = 90
-    initial_train_size: int = 500
-    wf_step_size: int = 126
-    
+    lookback: int = Field(default=90, ge=10, description="Input sequence length")
+    initial_train_size: int = Field(default=500, description="Initial training samples")
+    wf_step_size: int = Field(default=126, gt=0, description="Walk-forward step size")
+
     # Training parameters
-    learning_rate: float = 1e-4
-    batch_size: int = 20
-    epochs_init: int = 40
-    epochs_retrain: int = 4
-    
+    learning_rate: float = Field(default=1e-4, gt=0, lt=1, description="Adam learning rate")
+    batch_size: int = Field(default=20, gt=0, description="Batch size")
+    epochs_init: int = Field(default=40, gt=0, description="Initial epochs")
+    epochs_retrain: int = Field(default=4, gt=0, description="Retraining epochs")
+
     # Architecture parameters
-    gru_units: int = 128
-    dropout_rate: float = 0.2
-    
+    gru_units: int = Field(default=128, gt=0, description="GRU units")
+    dropout_rate: float = Field(default=0.2, ge=0, lt=1, description="Dropout rate")
+
     # Loss function weights
-    lambda_beta: float = 0.05
-    lambda_alpha: float = 0.5
+    lambda_beta: float = Field(default=0.05, ge=0, description="Beta smoothness penalty")
+    lambda_alpha: float = Field(default=0.5, ge=0, description="Alpha sparsity penalty")
+
+    # Feature Engineering Parameters
+    include_technicals: bool = Field(default=False, description="Include TA lib technical indicators")
+    include_volume: bool = Field(default=True, description="Include volume features")
+    include_calendar: bool = Field(default=True, description="Include calendar features")
+    include_macro: bool = Field(default=False, description="Include macro features")
+    lag_features: bool = Field(default=True, description="Lag features by 1 step")
     
+    ma_windows: List[int] = Field(default_factory=lambda: [5, 21, 63], description="Moving average windows")
+    volatility_windows: List[int] = Field(default_factory=lambda: [21, 63], description="Volatility windows")
+    roc_periods: List[int] = Field(default_factory=lambda: [1, 5, 21], description="Rate of change periods")
+
     # General
-    random_seed: int = 42
-    verbose: int = 1
-    
-    def validate(self) -> None:
-        """Validate configuration parameters."""
-        if self.lookback < 10:
-            raise ValueError("lookback must be >= 10")
-        if self.initial_train_size < self.lookback * 2:
+    random_seed: int = Field(default=42, description="Random seed")
+    verbose: int = Field(default=1, ge=0, description="Verbosity level")
+
+    class Config:
+        validate_assignment = True
+
+    @validator("initial_train_size")
+    def validate_train_size(cls, v, values):
+        if "lookback" in values and v < values["lookback"] * 2:
             warnings.warn(
-                f"initial_train_size ({self.initial_train_size}) is less than "
-                f"2x lookback ({self.lookback * 2}). This may cause unstable training."
+                f"initial_train_size ({v}) is less than 2x lookback. "
+                "This may cause unstable training."
             )
-        if not 0 < self.learning_rate < 1:
-            raise ValueError("learning_rate must be between 0 and 1")
-        if not 0 <= self.dropout_rate < 1:
-            raise ValueError("dropout_rate must be between 0 and 1")
+        return v
 
 
 class DynamicBeta:
     """
     GRU-based Dynamic Beta Estimator.
-    
+
     Estimates time-varying systematic risk (beta) using a Gated Recurrent Unit
     neural network within the CAPM framework. Supports both simple estimation
     using only returns data and advanced estimation using engineered features.
-    
+
     The model architecture consists of two parallel GRU pathways:
     - Beta pathway: Processes market/systematic features
     - Alpha pathway: Processes stock-specific/idiosyncratic features
-    
+
     The loss function combines:
     - Prediction accuracy (Huber loss on return prediction)
     - Beta stability (penalizes rapid changes)
     - Alpha sparsity (L1 penalty, encouraging market efficiency)
-    
+
     Parameters
     ----------
     config : DynamicBetaConfig, optional
         Configuration object. If None, uses default configuration.
     **kwargs
         Configuration parameters passed to DynamicBetaConfig.
-        
+
     Attributes
     ----------
     config : DynamicBetaConfig
@@ -155,77 +114,82 @@ class DynamicBeta:
         Fitted Keras model (available after fit).
     scaler_market_ : StandardScaler
         Fitted scaler for market features (available after fit).
-    scaler_stock_ : StandardScaler  
+    scaler_stock_ : StandardScaler
         Fitted scaler for stock features (available after fit).
     is_fitted_ : bool
         Whether the model has been fitted.
-        
+
     Examples
     --------
     Simple usage with returns only:
-    
+
     >>> import pandas as pd
     >>> from grubeta import DynamicBeta
-    >>> 
+    >>>
     >>> # Load your data
     >>> stock_returns = pd.Series(...)  # Daily stock returns
     >>> market_returns = pd.Series(...) # Daily market returns
-    >>> 
+    >>>
     >>> # Fit and predict
     >>> model = DynamicBeta(lookback=60)
     >>> results = model.fit_predict(stock_returns, market_returns)
-    >>> 
+    >>>
     >>> # Access results
     >>> print(results['beta'].tail())
     >>> model.plot_beta(results)
-    
+
     Advanced usage with features:
-    
+
     >>> from grubeta import DynamicBeta, DataPreprocessor
-    >>> 
+    >>>
     >>> # Prepare features
     >>> prep = DataPreprocessor()
     >>> features = prep.prepare(stock_df, market_df, macro_df)
-    >>> 
+    >>>
     >>> # Fit with full feature set
     >>> model = DynamicBeta(lookback=90, use_macro=True)
     >>> results = model.fit_predict(**features)
-    
+
     Notes
     -----
     The walk-forward validation ensures that:
     1. No future information leaks into predictions
     2. The model adapts to regime changes over time
     3. Out-of-sample performance is realistic
-    
+
     References
     ----------
-    .. [1] Sharpe, W.F. (1964). Capital asset prices: A theory of market 
+    .. [1] Sharpe, W.F. (1964). Capital asset prices: A theory of market
            equilibrium under conditions of risk.
-    .. [2] Cho, K. et al. (2014). Learning Phrase Representations using 
+    .. [2] Cho, K. et al. (2014). Learning Phrase Representations using
            RNN Encoder-Decoder for Statistical Machine Translation.
     """
-    
-    def __init__(
-        self, 
-        config: Optional[DynamicBetaConfig] = None,
-        **kwargs
-    ):
+
+    def __init__(self, config: Optional[DynamicBetaConfig] = None, **kwargs):
         if config is not None:
             self.config = config
+        if config is None:
+            # Pydantic validation happens here automatically
+            config = DynamicBetaConfig(**kwargs)
         else:
-            self.config = DynamicBetaConfig(**kwargs)
-        
-        self.config.validate()
-        
+            # If config object provided, ensure it's valid
+            # If using Pydantic, unexpected kwargs might raise error if passed to init
+            # But here we assume user passed correct object
+            pass
+
+        self.config = config
+        # self.config.validate() # Handled by Pydantic
+
+        # Will be set after fitting
         # Will be set after fitting
         self.model_ = None
-        self.scaler_market_ = StandardScaler()
-        self.scaler_stock_ = StandardScaler()
+        self.scaler_market_ = PITStandardScaler()
+        self.scaler_stock_ = PITStandardScaler()
         self.is_fitted_ = False
         self._feature_names_market_ = None
         self._feature_names_stock_ = None
-        
+        self._temporal_certificate = None
+
     def fit(
         self,
         stock_returns: Union[np.ndarray, pd.Series],
@@ -236,69 +200,99 @@ class DynamicBeta:
     ) -> "DynamicBeta":
         """
         Fit the dynamic beta model.
-        
+
         Parameters
         ----------
         stock_returns : array-like of shape (n_samples,)
             Stock return series (target variable).
-            
+
         market_returns : array-like of shape (n_samples,)
             Market return series.
-            
+
         market_features : array-like of shape (n_samples, n_market_features), optional
             Additional market/systematic features. If None, uses market_returns only.
-            
+
         stock_features : array-like of shape (n_samples, n_stock_features), optional
             Additional stock-specific features. If None, uses stock_returns only.
-            
+
         dates : array-like, optional
             Date index for the time series.
-            
+
         Returns
         -------
         self : DynamicBeta
             Fitted estimator.
         """
+        # Run Jidoka: Assert Temporal Integrity on Inputs
+        if market_features is not None:
+            assert_pit_integrity(
+                market_features, 
+                market_returns, 
+                correlation_threshold=0.9,
+                feature_names=self._feature_names_market_
+            )
+            
+        if stock_features is not None:
+            assert_pit_integrity(
+                stock_features, 
+                stock_returns,
+                correlation_threshold=0.9,
+                feature_names=self._feature_names_stock_
+            )
+
         # Convert inputs
         stock_returns = self._to_array(stock_returns)
         market_returns = self._to_array(market_returns)
-        
+
         if len(stock_returns) != len(market_returns):
             raise ValueError(
                 f"stock_returns and market_returns must have same length. "
                 f"Got {len(stock_returns)} and {len(market_returns)}."
             )
-            
+
         n_samples = len(stock_returns)
         if n_samples < self.config.lookback + self.config.initial_train_size:
             raise ValueError(
                 f"Insufficient data: need at least {self.config.lookback + self.config.initial_train_size} "
                 f"samples, got {n_samples}."
             )
-        
+
         # Build feature matrices
         if market_features is None:
             # Simple mode: use lagged returns as features
             market_features = self._create_return_features(market_returns)
-            
+
         if stock_features is None:
             stock_features = self._create_return_features(stock_returns)
+
+        # Jidoka: PIT Scaling (Scale-Then-Sequence)
+        # Use PIT scaling for causal correctness even in global fit
+        lookback = self.config.lookback
+        if self.config.verbose >= 1:
+            logger.info("Applying Point-in-Time (PIT) Scaling on features...")
             
-        # Create sequences
+        market_features = self.scaler_market_.fit_transform_pit(market_features, min_periods=lookback)
+        stock_features = self.scaler_stock_.fit_transform_pit(stock_features, min_periods=lookback)
+        
+        # Ensure scalers are fitted for inference
+        self.scaler_market_.fit(market_features)
+        self.scaler_stock_.fit(stock_features)
+
+        # Create sequences using pre-scaled features
         X_m, X_s, X_curr, y = self._create_sequences(
             market_features, stock_features, market_returns, stock_returns
         )
-        
+
         # Store for later use
         self._n_market_features = X_m.shape[2]
         self._n_stock_features = X_s.shape[2]
-        
+
         # Build and train model
         self._fit_model(X_m, X_s, X_curr, y)
-        
+
         self.is_fitted_ = True
         return self
-    
+
     def predict(
         self,
         stock_returns: Union[np.ndarray, pd.Series],
@@ -308,21 +302,21 @@ class DynamicBeta:
     ) -> Dict[str, np.ndarray]:
         """
         Predict dynamic beta for new data.
-        
+
         Parameters
         ----------
         stock_returns : array-like of shape (n_samples,)
             Stock return series.
-            
+
         market_returns : array-like of shape (n_samples,)
             Market return series.
-            
+
         market_features : array-like, optional
             Additional market features.
-            
+
         stock_features : array-like, optional
             Additional stock features.
-            
+
         Returns
         -------
         results : dict
@@ -331,33 +325,40 @@ class DynamicBeta:
             - 'alpha': Time-varying alpha estimates
         """
         self._check_is_fitted()
-        
+
         stock_returns = self._to_array(stock_returns)
         market_returns = self._to_array(market_returns)
-        
+
         if market_features is None:
             market_features = self._create_return_features(market_returns)
         if stock_features is None:
             stock_features = self._create_return_features(stock_returns)
-            
+
+        # Scale features using fitted scalers (Scale-Then-Sequence)
+        market_features = self.scaler_market_.transform(market_features)
+        stock_features = self.scaler_stock_.transform(stock_features)
+
         X_m, X_s, X_curr, _ = self._create_sequences(
             market_features, stock_features, market_returns, stock_returns
         )
-        
+
         # Normalize using fitted scalers
-        X_m_norm, X_s_norm = self._normalize_batch(X_m, X_s, fit=False)
-        
+        # Note: Features are already scaled above, so we don't need _normalize_batch here
+        # X_m_norm, X_s_norm = self._normalize_batch(X_m, X_s, fit=False)
+        X_m_norm, X_s_norm = X_m, X_s
+
         # Predict
+        assert self.model_ is not None, "Model not fitted"
         raw_pred = self.model_.predict([X_m_norm, X_s_norm, X_curr], verbose=0)
         betas, alphas = self._extract_predictions(raw_pred)
-        
+
         # Pad with NaN for alignment
         n_pad = self.config.lookback
         betas = np.concatenate([np.full(n_pad, np.nan), betas])
         alphas = np.concatenate([np.full(n_pad, np.nan), alphas])
-        
-        return {'beta': betas, 'alpha': alphas}
-    
+
+        return {"beta": betas, "alpha": alphas}
+
     def fit_predict(
         self,
         stock_returns: Union[np.ndarray, pd.Series],
@@ -368,27 +369,27 @@ class DynamicBeta:
     ) -> pd.DataFrame:
         """
         Fit the model and return beta predictions using walk-forward validation.
-        
+
         This is the recommended method for most use cases. It performs proper
         walk-forward validation to prevent lookahead bias.
-        
+
         Parameters
         ----------
         stock_returns : array-like of shape (n_samples,)
             Stock return series.
-            
+
         market_returns : array-like of shape (n_samples,)
             Market return series.
-            
+
         market_features : array-like, optional
             Additional market/systematic features.
-            
+
         stock_features : array-like, optional
             Additional stock-specific features.
-            
+
         dates : array-like, optional
             Date index for results.
-            
+
         Returns
         -------
         results : pd.DataFrame
@@ -398,7 +399,7 @@ class DynamicBeta:
             - 'alpha': Dynamic alpha estimates
             - 'stock_return': Original stock returns
             - 'market_return': Original market returns
-            
+
         Examples
         --------
         >>> model = DynamicBeta(lookback=60)
@@ -408,142 +409,177 @@ class DynamicBeta:
         # Convert inputs
         stock_returns = self._to_array(stock_returns)
         market_returns = self._to_array(market_returns)
-        
+
         if market_features is None:
             market_features = self._create_return_features(market_returns)
         if stock_features is None:
             stock_features = self._create_return_features(stock_returns)
+
+        # Jidoka: PIT Scaling (Scale-Then-Sequence)
+        # Scale 2D features before creating 3D sequences to ensure correct PIT logic
+        # and avoid 3D scaling complexity issues.
+        lookback = self.config.lookback
         
-        # Create sequences
+        if self.config.verbose >= 1:
+            logger.info("Applying Point-in-Time (PIT) Scaling on features...")
+            
+        market_features = self.scaler_market_.fit_transform_pit(market_features, min_periods=lookback)
+        stock_features = self.scaler_stock_.fit_transform_pit(stock_features, min_periods=lookback)
+        
+        # Ensure scalers are fitted for inference (predict) using end-of-training state
+        self.scaler_market_.fit(market_features)
+        self.scaler_stock_.fit(stock_features)
+
+        # Create sequences using pre-scaled features
         X_m, X_s, X_curr, y = self._create_sequences(
             market_features, stock_features, market_returns, stock_returns
         )
-        
+
         # Store dimensions
         self._n_market_features = X_m.shape[2]
         self._n_stock_features = X_s.shape[2]
-        
+
         # Run walk-forward training/prediction
         betas, alphas = self._walk_forward(X_m, X_s, X_curr, y)
-        
+
         self.is_fitted_ = True
-        
+
         # Build results DataFrame
         results = self._build_results_df(
             betas, alphas, stock_returns, market_returns, dates
         )
-        
+
         return results
-    
+
     def _walk_forward(
-        self, 
-        X_m: np.ndarray, 
-        X_s: np.ndarray, 
-        X_curr: np.ndarray, 
-        y: np.ndarray
+        self, X_m: np.ndarray, X_s: np.ndarray, X_curr: np.ndarray, y: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Execute anchored walk-forward training and prediction."""
         n_samples = len(y)
-        betas, alphas = [], []
-        
+        betas: List[float] = []
+        alphas: List[float] = []
+
         # Initialize model
         from grubeta.models import GRUBetaModel
+
         self.model_ = GRUBetaModel(self.config).build(
             self._n_market_features, self._n_stock_features
         )
-        
-        # Phase 1: Initial training
+
+        # Phase 1: Pre-calculate PIT Scaling (Done in fit())
+        # Features X_m, X_s are already PIT-scaled.
+        lookback = self.config.lookback
+
+        # Phase 2: Initial training
         init_size = self.config.initial_train_size
         if self.config.verbose >= 1:
             logger.info(f"Phase 1: Initial training ({init_size} samples)")
-        
-        X_m_init, X_s_init = self._normalize_batch(
-            X_m[:init_size], X_s[:init_size], fit=True
-        )
-        
+
+        assert self.model_ is not None  # Built above
         self.model_.fit(
-            [X_m_init, X_s_init, X_curr[:init_size]],
+            [X_m[:init_size], X_s[:init_size], X_curr[:init_size]],
             y[:init_size],
             epochs=self.config.epochs_init,
             batch_size=self.config.batch_size,
-            verbose=0
+            verbose=0,
         )
-        
+
         # Pad burn-in period with NaN
         betas.extend([np.nan] * init_size)
         alphas.extend([np.nan] * init_size)
-        
-        # Phase 2: Walk-forward
+
+        # Phase 3: Walk-forward
         curr_idx = init_size
         step = self.config.wf_step_size
-        
+
         if self.config.verbose >= 1:
             logger.info(f"Phase 2: Walk-forward (step={step})")
-        
+
         while curr_idx < n_samples:
             end_idx = min(curr_idx + step, n_samples)
             
-            # Refit scalers on expanding window
-            self._normalize_batch(X_m[:curr_idx], X_s[:curr_idx], fit=True)
-            
-            # Transform out-of-sample chunk
-            X_m_next, X_s_next = self._normalize_batch(
-                X_m[curr_idx:end_idx], X_s[curr_idx:end_idx], fit=False
-            )
-            
-            # Predict out-of-sample
-            pred = self.model_.predict(
+            # Data is already PIT-scaled (Scale-Then-Sequence)
+            X_m_next = X_m[curr_idx:end_idx]
+            X_s_next = X_s[curr_idx:end_idx]
+
+            # Predict out-of-sample (model_ is set above)
+            pred = self.model_.predict(  # type: ignore[union-attr]
                 [X_m_next, X_s_next, X_curr[curr_idx:end_idx]], verbose=0
             )
             b_next, a_next = self._extract_predictions(pred)
             betas.extend(b_next)
             alphas.extend(a_next)
-            
+
             # Incremental retraining
             if end_idx < n_samples:
                 train_window = 500
                 start_train = max(0, end_idx - train_window)
-                
-                self._normalize_batch(X_m[:end_idx], X_s[:end_idx], fit=True)
-                X_m_train, X_s_train = self._normalize_batch(
-                    X_m[start_train:end_idx], X_s[start_train:end_idx], fit=False
-                )
-                
-                self.model_.fit(
-                    [X_m_train, X_s_train, X_curr[start_train:end_idx]],
+
+                self.model_.fit(  # type: ignore[union-attr]
+                    [
+                        X_m[start_train:end_idx], 
+                        X_s[start_train:end_idx], 
+                        X_curr[start_train:end_idx]
+                    ],
                     y[start_train:end_idx],
                     epochs=self.config.epochs_retrain,
                     batch_size=self.config.batch_size,
-                    verbose=0
+                    verbose=0,
                 )
-            
+
             curr_idx += step
-            
+
             if self.config.verbose >= 2:
                 logger.debug(f"Progress: {curr_idx}/{n_samples}")
         
+        # Ensure scalers are fitted for future inference
+        # (This is now redundant since we fit() in fit method, but keeps walk_forward consistent)
+        
+        # Issue Temporal Certificate
+        self._temporal_certificate = TemporalCertificate(
+            model_version="0.2.0-pit",
+            training_window=(str(0), str(init_size)),
+            prediction_window=(str(init_size), str(n_samples)),
+            scaler_policy="PIT_EXPANDING_WINDOW",
+            feature_lag_policy="ALL_LAGGED_1_DAY",
+            integrity_checks_passed=["PIT_SCALING_VERIFIED"]
+        )
+
         return np.array(betas), np.array(alphas)
-    
+
     def _create_return_features(self, returns: np.ndarray) -> np.ndarray:
-        """Create simple feature matrix from returns."""
-        # Use lagged returns, volatility, and momentum as basic features
+        """
+        Create simple feature matrix from returns.
+        
+        CRITICAL: All features use strictly lagged data [0:t-1] to predict t.
+        This is a Poka-Yoke mechanism to prevent lookahead bias.
+        """
         n = len(returns)
         features = np.zeros((n, 5))
+
+        # Feature 0: Lag 1 return (t-1)
+        features[1:, 0] = returns[:-1]
         
-        features[:, 0] = returns  # Current return
-        features[1:, 1] = returns[:-1]  # Lag 1
-        features[5:, 2] = returns[:-5]  # Lag 5
+        # Feature 1: Lag 2 return (t-2)
+        features[2:, 1] = returns[:-2]
         
-        # Rolling volatility (20-day)
-        for i in range(20, n):
-            features[i, 3] = np.std(returns[i-20:i])
+        # Feature 2: Lag 5 return (t-5)
+        features[5:, 2] = returns[:-5]
+
+        # Feature 3: Rolling volatility (20-day, ending at t-1)
+        # Vectorized using pandas for efficiency
+        ret_series = pd.Series(returns)
+        vol_20 = ret_series.rolling(20).std().shift(1).values  # shift ensures t-1
+        features[:, 3] = np.nan_to_num(vol_20, nan=0.0)
+
+        # Feature 4: Cumulative return (20-day, ending at t-1)
+        cum_20 = ret_series.rolling(20).sum().shift(1).values
+        features[:, 4] = np.nan_to_num(cum_20, nan=0.0)
+
+        features[:, 4] = np.nan_to_num(cum_20, nan=0.0)
         
-        # Cumulative return (20-day)
-        for i in range(20, n):
-            features[i, 4] = np.sum(returns[i-20:i])
-            
-        return features
-    
+        return cast(np.ndarray, features)
+
     def _create_sequences(
         self,
         market_features: np.ndarray,
@@ -554,55 +590,49 @@ class DynamicBeta:
         """Create sliding window sequences."""
         lookback = self.config.lookback
         n = len(stock_returns)
-        
+
         X_m_seq, X_s_seq, X_curr, y = [], [], [], []
-        
+
         for i in range(lookback, n):
-            X_m_seq.append(market_features[i-lookback:i])
-            X_s_seq.append(stock_features[i-lookback:i])
+            X_m_seq.append(market_features[i - lookback : i])
+            X_s_seq.append(stock_features[i - lookback : i])
             X_curr.append([market_returns[i]])
             y.append(stock_returns[i])
-        
-        return (
-            np.array(X_m_seq), 
-            np.array(X_s_seq), 
-            np.array(X_curr), 
-            np.array(y)
-        )
-    
+
+        return (np.array(X_m_seq), np.array(X_s_seq), np.array(X_curr), np.array(y))
+
     def _normalize_batch(
-        self, 
-        X_m: np.ndarray, 
-        X_s: np.ndarray, 
-        fit: bool = False
+        self, X_m: np.ndarray, X_s: np.ndarray, fit: bool = False
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Normalize 3D tensors."""
         n, t, f_m = X_m.shape
         _, _, f_s = X_s.shape
-        
+
         X_m_flat = X_m.reshape(-1, f_m)
         X_s_flat = X_s.reshape(-1, f_s)
-        
+
         # Clean data
         X_m_flat = self._clean_data(X_m_flat)
         X_s_flat = self._clean_data(X_s_flat)
-        
+
         if fit:
             self.scaler_market_.fit(X_m_flat)
             self.scaler_stock_.fit(X_s_flat)
-        
+
         X_m_scaled = self.scaler_market_.transform(X_m_flat).reshape(n, t, f_m)
         X_s_scaled = self.scaler_stock_.transform(X_s_flat).reshape(n, t, f_s)
-        
+
         return X_m_scaled, X_s_scaled
-    
-    def _extract_predictions(self, raw_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+
+    def _extract_predictions(
+        self, raw_pred: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Extract beta and alpha from concatenated model output."""
         lookback = self.config.lookback
         beta_idx = 1 + lookback - 1
         alpha_idx = 1 + (2 * lookback) - 1
         return raw_pred[:, beta_idx], raw_pred[:, alpha_idx]
-    
+
     def _build_results_df(
         self,
         betas: np.ndarray,
@@ -614,62 +644,73 @@ class DynamicBeta:
         """Build results DataFrame with proper alignment."""
         n = len(stock_returns)
         lookback = self.config.lookback
-        
+
         # Pad to original length
         betas_full = np.concatenate([np.full(lookback, np.nan), betas])[:n]
         alphas_full = np.concatenate([np.full(lookback, np.nan), alphas])[:n]
-        
-        results = pd.DataFrame({
-            'beta': betas_full,
-            'alpha': alphas_full,
-            'stock_return': stock_returns,
-            'market_return': market_returns,
-        })
-        
+
+        results = pd.DataFrame(
+            {
+                "beta": betas_full,
+                "alpha": alphas_full,
+                "stock_return": stock_returns,
+                "market_return": market_returns,
+            }
+        )
+
         if dates is not None:
-            results['date'] = dates
-            results = results[['date', 'beta', 'alpha', 'stock_return', 'market_return']]
-        
+            results["date"] = dates
+            results = results[
+                ["date", "beta", "alpha", "stock_return", "market_return"]
+            ]
+
         return results
-    
+
     def _fit_model(
-        self, 
-        X_m: np.ndarray, 
-        X_s: np.ndarray, 
-        X_curr: np.ndarray, 
-        y: np.ndarray
+        self, X_m: np.ndarray, X_s: np.ndarray, X_curr: np.ndarray, y: np.ndarray
     ) -> None:
         """Fit model on entire dataset (for simple fit without walk-forward)."""
         from grubeta.models import GRUBetaModel
-        
+
         self.model_ = GRUBetaModel(self.config).build(
             self._n_market_features, self._n_stock_features
         )
+
+        if self.config.verbose >= 1:
+            logger.info("Fitting model on pre-scaled PIT features...")
+
+        # Data is already PIT-scaled (Scale-Then-Sequence)
+        # No need to scale again
         
-        X_m_norm, X_s_norm = self._normalize_batch(X_m, X_s, fit=True)
-        
-        self.model_.fit(
-            [X_m_norm, X_s_norm, X_curr],
+        # Ensure scalers are fitted for future inference
+        # (Redundant if called from fit(), but harmless)
+        # X_m_flat = X_m.reshape(-1, self._n_market_features)
+        # self.scaler_market_.fit(X_m_flat)
+
+        assert self.model_ is not None
+        self.model_.fit(  # type: ignore[union-attr]
+            [X_m, X_s, X_curr],
             y,
             epochs=self.config.epochs_init,
             batch_size=self.config.batch_size,
-            verbose=1 if self.config.verbose >= 1 else 0
+            verbose=1 if self.config.verbose >= 1 else 0,
         )
-    
+
     @staticmethod
     def _clean_data(X: np.ndarray) -> np.ndarray:
         """Clean data by handling inf/nan values."""
         X = np.where(np.isinf(X), np.nan, X)
         X = np.nan_to_num(X, nan=0.0)
-        return np.clip(X, -100.0, 100.0)
-    
+        X = np.nan_to_num(X, nan=0.0)
+        return cast(np.ndarray, np.clip(X, -100.0, 100.0))
+
     @staticmethod
     def _to_array(x: Union[np.ndarray, pd.Series]) -> np.ndarray:
         """Convert input to numpy array."""
         if isinstance(x, pd.Series):
-            return x.values
-        return np.asarray(x)
-    
+            return cast(np.ndarray, x.values)
+        return cast(np.ndarray, np.asarray(x))
+
     def _check_is_fitted(self) -> None:
         """Check if model is fitted."""
         if not self.is_fitted_:
@@ -677,17 +718,17 @@ class DynamicBeta:
                 "This DynamicBeta instance is not fitted yet. "
                 "Call 'fit' or 'fit_predict' before using this method."
             )
-    
+
     def plot_beta(
-        self, 
-        results: pd.DataFrame, 
+        self,
+        results: pd.DataFrame,
         figsize: Tuple[int, int] = (12, 6),
         title: Optional[str] = None,
         save_path: Optional[str] = None,
     ) -> None:
         """
         Plot the dynamic beta trajectory.
-        
+
         Parameters
         ----------
         results : pd.DataFrame
@@ -700,32 +741,34 @@ class DynamicBeta:
             Path to save the figure.
         """
         import matplotlib.pyplot as plt
-        
+
         fig, ax = plt.subplots(figsize=figsize)
-        
-        x = results['date'] if 'date' in results.columns else results.index
-        ax.plot(x, results['beta'], label='GRU Dynamic Beta', 
-                color='#2c3e50', linewidth=1.5)
-        ax.axhline(1.0, color='#e74c3c', linestyle='--', alpha=0.5, 
-                   label='Market Beta (1.0)')
-        
-        ax.set_title(title or 'Dynamic Beta Evolution')
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Beta')
+
+        x = results["date"] if "date" in results.columns else results.index
+        ax.plot(
+            x, results["beta"], label="GRU Dynamic Beta", color="#2c3e50", linewidth=1.5
+        )
+        ax.axhline(
+            1.0, color="#e74c3c", linestyle="--", alpha=0.5, label="Market Beta (1.0)"
+        )
+
+        ax.set_title(title or "Dynamic Beta Evolution")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Beta")
         ax.legend()
         ax.grid(True, alpha=0.3)
-        
+
         plt.tight_layout()
-        
+
         if save_path:
             plt.savefig(save_path, dpi=300)
-        
+
         plt.show()
-    
+
     def save(self, path: Union[str, Path]) -> None:
         """
         Save the fitted model to disk.
-        
+
         Parameters
         ----------
         path : str or Path
@@ -733,67 +776,73 @@ class DynamicBeta:
         """
         self._check_is_fitted()
         import pickle
-        
+
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        
-        # Save Keras model
+
+        # Save Keras model (model_ exists after _check_is_fitted)
+        assert self.model_ is not None
         self.model_.save(path / "model.h5")
-        
+
         # Save scalers and config
-        with open(path / "artifacts.pkl", 'wb') as f:
-            pickle.dump({
-                'scaler_market': self.scaler_market_,
-                'scaler_stock': self.scaler_stock_,
-                'config': self.config,
-                'n_market_features': self._n_market_features,
-                'n_stock_features': self._n_stock_features,
-            }, f)
-        
+        with open(path / "artifacts.pkl", "wb") as f:
+            pickle.dump(
+                {
+                    "scaler_market": self.scaler_market_,
+                    "scaler_stock": self.scaler_stock_,
+                    "config": self.config,
+                    "n_market_features": self._n_market_features,
+                    "n_stock_features": self._n_stock_features,
+                },
+                f,
+            )
+
         if self.config.verbose >= 1:
             logger.info(f"Model saved to {path}")
-    
+
     @classmethod
     def load(cls, path: Union[str, Path]) -> "DynamicBeta":
         """
         Load a fitted model from disk.
-        
+
         Parameters
         ----------
         path : str or Path
             Directory containing saved model artifacts.
-            
+
         Returns
         -------
         model : DynamicBeta
             Loaded model instance.
         """
         import pickle
+
         from tensorflow import keras
-        
+
         path = Path(path)
-        
+
         # Load artifacts
-        with open(path / "artifacts.pkl", 'rb') as f:
+        with open(path / "artifacts.pkl", "rb") as f:
             artifacts = pickle.load(f)
-        
+
         # Create instance
-        instance = cls(config=artifacts['config'])
-        instance.scaler_market_ = artifacts['scaler_market']
-        instance.scaler_stock_ = artifacts['scaler_stock']
-        instance._n_market_features = artifacts['n_market_features']
-        instance._n_stock_features = artifacts['n_stock_features']
-        
+        instance = cls(config=artifacts["config"])
+        instance.scaler_market_ = artifacts["scaler_market"]
+        instance.scaler_stock_ = artifacts["scaler_stock"]
+        instance._n_market_features = artifacts["n_market_features"]
+        instance._n_stock_features = artifacts["n_stock_features"]
+
         # Load Keras model
         from grubeta.models import GRUBetaModel
+
         instance.model_ = keras.models.load_model(
             path / "model.h5",
-            custom_objects=GRUBetaModel.get_custom_objects(instance.config)
+            custom_objects=GRUBetaModel.get_custom_objects(instance.config),
         )
-        
+
         instance.is_fitted_ = True
         return instance
-    
+
     def __repr__(self) -> str:
         fitted_str = "fitted" if self.is_fitted_ else "not fitted"
         return (

@@ -5,9 +5,19 @@ This module provides helper functions for data validation,
 lookahead bias testing, and benchmark beta calculations.
 """
 
-from typing import Union, Tuple, Optional
+from typing import Optional, Tuple, Union, cast
+
 import numpy as np
 import pandas as pd
+
+
+def calculate_systematic_r2(
+    betas: np.ndarray, stock_returns: np.ndarray, market_returns: np.ndarray
+) -> float:
+    """Calculate R-squared of the dynamic beta model."""
+    pred_returns = betas * market_returns
+    r2 = 1 - np.nanvar(stock_returns - pred_returns) / (np.nanvar(stock_returns) + 1e-8)
+    return float(r2)
 
 
 def validate_no_lookahead(
@@ -19,11 +29,11 @@ def validate_no_lookahead(
 ) -> bool:
     """
     Sanity check: verify beta at t is not correlated with future returns.
-    
+
     This is a critical validation to ensure the model doesn't suffer from
     lookahead bias. If betas are correlated with future returns (t+k),
     it indicates information leakage.
-    
+
     Parameters
     ----------
     betas : array-like
@@ -36,16 +46,16 @@ def validate_no_lookahead(
         Initial training window size (skipped in analysis).
     verbose : bool, default=True
         Print diagnostic output.
-        
+
     Returns
     -------
     passed : bool
         True if no suspicious correlations detected.
-        
+
     Examples
     --------
     >>> from grubeta.utils import validate_no_lookahead
-    >>> 
+    >>>
     >>> results = model.fit_predict(stock_returns, market_returns)
     >>> passed = validate_no_lookahead(
     ...     results['beta'].values,
@@ -60,26 +70,26 @@ def validate_no_lookahead(
     valid_mask = ~np.isnan(betas)
     b = betas[valid_mask]
     r = returns[valid_mask]
-    
+
     suspicious_count = 0
-    
+
     for lag in [1, 5, 10, 20]:
         if len(r) <= lag:
             continue
-            
+
         future_ret = np.roll(r, -lag)[:-lag]
         beta_aligned = b[:-lag]
-        
+
         corr = np.corrcoef(beta_aligned, future_ret)[0, 1]
-        
+
         is_suspicious = abs(corr) > 0.15
         if is_suspicious:
             suspicious_count += 1
-        
+
         if verbose:
             status = "⚠️ SUSPICIOUS" if is_suspicious else "✓"
             print(f"  {status} Beta correlation with return t+{lag}: {corr:.4f}")
-    
+
     return suspicious_count == 0
 
 
@@ -91,11 +101,11 @@ def rolling_ols_beta(
 ) -> np.ndarray:
     """
     Compute rolling OLS beta.
-    
+
     This provides a simple benchmark for comparison with the GRU model.
     Uses an expanding window at the start until `window` observations
     are available.
-    
+
     Parameters
     ----------
     stock_returns : array-like
@@ -106,24 +116,24 @@ def rolling_ols_beta(
         Rolling window size (approximately 1 year of trading days).
     min_periods : int, optional
         Minimum observations required. Defaults to window // 2.
-        
+
     Returns
     -------
     betas : np.ndarray
         Rolling beta estimates. NaN for periods with insufficient data.
-        
+
     Examples
     --------
     >>> from grubeta.utils import rolling_ols_beta
-    >>> 
+    >>>
     >>> # Compute benchmark
     >>> ols_beta = rolling_ols_beta(stock_returns, market_returns, window=252)
-    >>> 
+    >>>
     >>> # Compare with GRU beta
     >>> from grubeta import DynamicBeta
     >>> model = DynamicBeta()
     >>> results = model.fit_predict(stock_returns, market_returns)
-    >>> 
+    >>>
     >>> # Calculate correlation
     >>> valid = ~np.isnan(ols_beta) & ~np.isnan(results['beta'])
     >>> corr = np.corrcoef(ols_beta[valid], results['beta'].values[valid])[0, 1]
@@ -134,39 +144,40 @@ def rolling_ols_beta(
         stock_returns = stock_returns.values
     if isinstance(market_returns, pd.Series):
         market_returns = market_returns.values
-    
+
     stock_returns = np.asarray(stock_returns, dtype=float)
     market_returns = np.asarray(market_returns, dtype=float)
-    
+
     n = len(stock_returns)
     min_periods = min_periods or (window // 2)
-    
+
     betas = np.full(n, np.nan)
-    
+
     for i in range(min_periods, n):
         # Expanding window until we reach full window size
         start = max(0, i - window)
-        
+
         y = stock_returns[start:i]
         x = market_returns[start:i]
-        
+
         # Handle NaN values
         mask = ~np.isnan(y) & ~np.isnan(x)
         if mask.sum() < min_periods:
             continue
-        
+
         y_clean = y[mask]
         x_clean = x[mask]
-        
+
         # Simple OLS: beta = cov(y, x) / var(x)
         x_demean = x_clean - np.mean(x_clean)
-        cov = np.sum(x_demean * (y_clean - np.mean(y_clean)))
-        var = np.sum(x_demean ** 2)
-        
+        cov: float = float(np.sum(x_demean * (y_clean - np.mean(y_clean))))
+        var: float = float(np.sum(x_demean**2))
+
         if var > 1e-10:
             betas[i] = cov / var
-    
-    return betas
+
+    return cast(np.ndarray, betas)
+
 
 
 def create_sequences(
@@ -176,7 +187,7 @@ def create_sequences(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Create sliding window sequences for time series modeling.
-    
+
     Parameters
     ----------
     data : array-like of shape (n_samples, n_features)
@@ -185,14 +196,14 @@ def create_sequences(
         Number of past timesteps to include in each sequence.
     target_col : int, default=0
         Column index for the target variable.
-        
+
     Returns
     -------
     X : np.ndarray of shape (n_sequences, lookback, n_features)
         Input sequences.
     y : np.ndarray of shape (n_sequences,)
         Target values.
-        
+
     Examples
     --------
     >>> data = np.column_stack([returns, features])
@@ -202,39 +213,38 @@ def create_sequences(
     data = np.asarray(data)
     if data.ndim == 1:
         data = data.reshape(-1, 1)
-    
+
     n_samples, n_features = data.shape
     n_sequences = n_samples - lookback
-    
+
     X = np.zeros((n_sequences, lookback, n_features))
     y = np.zeros(n_sequences)
-    
+
     for i in range(n_sequences):
-        X[i] = data[i:i + lookback]
+        X[i] = data[i : i + lookback]
         y[i] = data[i + lookback, target_col]
-    
+
     return X, y
 
 
 def align_series(
-    *series: Union[np.ndarray, pd.Series, pd.DataFrame],
-    dropna: bool = True
+    *series: Union[np.ndarray, pd.Series, pd.DataFrame], dropna: bool = True
 ) -> Tuple[np.ndarray, ...]:
     """
     Align multiple time series by removing NaN values across all series.
-    
+
     Parameters
     ----------
     *series : array-like
         Variable number of series to align.
     dropna : bool, default=True
         Whether to drop rows with any NaN values.
-        
+
     Returns
     -------
     aligned : tuple of np.ndarray
         Aligned arrays.
-        
+
     Examples
     --------
     >>> stock_ret, mkt_ret, betas = align_series(
@@ -248,36 +258,36 @@ def align_series(
             arrays.append(s.values)
         else:
             arrays.append(np.asarray(s))
-    
+
     # Ensure same length
     min_len = min(len(a) for a in arrays)
     arrays = [a[:min_len] for a in arrays]
-    
+
     if dropna:
         # Create combined mask
-        mask = np.ones(min_len, dtype=bool)
+        mask: np.ndarray = np.ones(min_len, dtype=bool)
         for a in arrays:
             if a.ndim == 1:
                 mask &= ~np.isnan(a)
             else:
                 mask &= ~np.isnan(a).any(axis=1)
-        
+
         arrays = [a[mask] for a in arrays]
-    
+
     return tuple(arrays)
 
 
 def compute_information_coefficient(
     predicted: np.ndarray,
     actual: np.ndarray,
-    method: str = 'pearson',
+    method: str = "pearson",
 ) -> float:
     """
     Compute Information Coefficient (IC) between predictions and actuals.
-    
+
     The IC is commonly used in quantitative finance to measure
     the correlation between predicted and actual values.
-    
+
     Parameters
     ----------
     predicted : array-like
@@ -286,25 +296,27 @@ def compute_information_coefficient(
         Actual values (e.g., stock_return).
     method : str, default='pearson'
         Correlation method: 'pearson', 'spearman', or 'kendall'.
-        
+
     Returns
     -------
     ic : float
         Information coefficient.
     """
     predicted, actual = align_series(predicted, actual)
-    
+
     if len(predicted) < 2:
         return np.nan
-    
-    if method == 'pearson':
-        return np.corrcoef(predicted, actual)[0, 1]
-    elif method == 'spearman':
+
+    if method == "pearson":
+        return float(np.corrcoef(predicted, actual)[0, 1])
+    elif method == "spearman":
         from scipy.stats import spearmanr
-        return spearmanr(predicted, actual)[0]
-    elif method == 'kendall':
+
+        return float(spearmanr(predicted, actual)[0])
+    elif method == "kendall":
         from scipy.stats import kendalltau
-        return kendalltau(predicted, actual)[0]
+
+        return float(kendalltau(predicted, actual)[0])
     else:
         raise ValueError(f"Unknown method: {method}")
 
@@ -315,16 +327,16 @@ def compute_hit_rate(
 ) -> float:
     """
     Compute directional hit rate.
-    
+
     Measures how often the predicted direction matches the actual direction.
-    
+
     Parameters
     ----------
     predicted_direction : array-like
         Predicted directions (positive/negative).
     actual_direction : array-like
         Actual directions.
-        
+
     Returns
     -------
     hit_rate : float
@@ -333,17 +345,17 @@ def compute_hit_rate(
     predicted_direction, actual_direction = align_series(
         predicted_direction, actual_direction
     )
-    
+
     pred_sign = np.sign(predicted_direction)
     actual_sign = np.sign(actual_direction)
-    
+
     # Exclude zeros
     mask = (pred_sign != 0) & (actual_sign != 0)
-    
+
     if mask.sum() == 0:
         return np.nan
-    
-    return (pred_sign[mask] == actual_sign[mask]).mean()
+
+    return float((pred_sign[mask] == actual_sign[mask]).mean())
 
 
 def annualize_beta(
@@ -352,17 +364,17 @@ def annualize_beta(
 ) -> float:
     """
     Note: Beta does not need annualization as it's a ratio.
-    
+
     This function is provided for completeness but simply returns
     the input beta unchanged. Beta is scale-invariant.
-    
+
     Parameters
     ----------
     daily_beta : float
         Daily beta estimate.
     trading_days : int, default=252
         Trading days per year (unused).
-        
+
     Returns
     -------
     beta : float
@@ -378,7 +390,7 @@ def beta_to_hedge_ratio(
 ) -> float:
     """
     Convert beta to a hedge ratio for portfolio management.
-    
+
     Parameters
     ----------
     beta : float
@@ -387,12 +399,12 @@ def beta_to_hedge_ratio(
         Current value of stock position.
     market_value : float
         Value of one unit of market hedge instrument.
-        
+
     Returns
     -------
     hedge_ratio : float
         Number of market units to short to hedge the position.
-        
+
     Examples
     --------
     >>> # Stock position worth $100,000 with beta of 1.2
