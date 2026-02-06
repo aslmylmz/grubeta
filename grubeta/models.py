@@ -221,7 +221,12 @@ class GRUBetaModel:
 
         # Output beta for each timestep (for stability loss)
         beta_seq = layers.TimeDistributed(
-            layers.Dense(1, activation="linear"), name="beta_sequence"
+            layers.Dense(
+                1, 
+                activation="linear", 
+                bias_initializer=tf.keras.initializers.Constant(self.config.initial_beta)
+            ), 
+            name="beta_sequence"
         )(x_beta)
 
         # Extract last timestep beta for CAPM calculation
@@ -236,7 +241,12 @@ class GRUBetaModel:
 
         # Output alpha for each timestep (for sparsity loss)
         alpha_seq = layers.TimeDistributed(
-            layers.Dense(1, activation="linear"), name="alpha_sequence"
+            layers.Dense(
+                1, 
+                activation="linear", 
+                bias_initializer=tf.keras.initializers.Constant(self.config.initial_alpha)
+            ), 
+            name="alpha_sequence"
         )(x_alpha)
 
         # Extract last timestep alpha
@@ -377,7 +387,12 @@ class DualPathwayGRU(GRUBetaModel):
         )(market_with_regime)
         x_beta = layers.Dropout(self.config.dropout_rate)(x_beta)
         beta_seq = layers.TimeDistributed(
-            layers.Dense(1, activation="linear"), name="beta_sequence"
+            layers.Dense(
+                1, 
+                activation="linear",
+                bias_initializer=tf.keras.initializers.Constant(self.config.initial_beta)
+            ), 
+            name="beta_sequence"
         )(x_beta)
         beta_t = layers.Lambda(extract_last_step, name="beta_current")(beta_seq)
 
@@ -387,7 +402,12 @@ class DualPathwayGRU(GRUBetaModel):
         )(inp_stock)
         x_alpha = layers.Dropout(self.config.dropout_rate)(x_alpha)
         alpha_seq = layers.TimeDistributed(
-            layers.Dense(1, activation="linear"), name="alpha_sequence"
+            layers.Dense(
+                1, 
+                activation="linear",
+                bias_initializer=tf.keras.initializers.Constant(self.config.initial_alpha)
+            ), 
+            name="alpha_sequence"
         )(x_alpha)
         alpha_t = layers.Lambda(extract_last_step, name="alpha_current")(alpha_seq)
 
