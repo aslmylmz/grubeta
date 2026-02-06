@@ -3,6 +3,7 @@ include README.md
 include CHANGELOG.md
 include CONTRIBUTING.md
 include pyproject.toml
+include grubeta/py.typed
 
 recursive-include grubeta *.py
 recursive-include tests *.py
