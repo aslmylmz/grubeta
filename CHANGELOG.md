@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-02-11
+
+### Fixed
+- Critical: `pydantic` dependency now correctly included in published package
+- Publish workflow no longer depends on deleted `testpypi` environment
+- Migrated to Pydantic V2 validators (`@field_validator`, `ConfigDict`)
+- Removed duplicate line in `_create_return_features`
+- Aligned minimum Python version to 3.9 across all metadata
+- Reverted `initial_beta` default to `0.0` for stability
+- Removed stray `verify_revert.py` from repository
+
 ## [0.1.1] - 2026-02-06
 
 ### Added

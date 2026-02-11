@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sklearn.preprocessing import StandardScaler
 
 from grubeta.evaluation import BetaEvaluator
@@ -55,7 +55,7 @@ class DynamicBetaConfig(BaseModel):
     lambda_alpha: float = Field(default=0.5, ge=0, description="Alpha sparsity penalty")
 
     # Initialization parameters
-    initial_beta: float = Field(default=1.0, description="Initial bias for beta")
+    initial_beta: float = Field(default=0.0, description="Initial bias for beta")
     initial_alpha: float = Field(default=0.0, description="Initial bias for alpha")
 
     # Feature Engineering Parameters
@@ -73,12 +73,13 @@ class DynamicBetaConfig(BaseModel):
     random_seed: int = Field(default=42, description="Random seed")
     verbose: int = Field(default=1, ge=0, description="Verbosity level")
 
-    class Config:
-        validate_assignment = True
+    model_config = ConfigDict(validate_assignment=True)
 
-    @validator("initial_train_size")
-    def validate_train_size(cls, v, values):
-        if "lookback" in values and v < values["lookback"] * 2:
+    @field_validator("initial_train_size")
+    @classmethod
+    def validate_train_size(cls, v: int, info) -> int:
+        lookback = info.data.get("lookback")
+        if lookback is not None and v < lookback * 2:
             warnings.warn(
                 f"initial_train_size ({v}) is less than 2x lookback. "
                 "This may cause unstable training."
@@ -578,8 +579,6 @@ class DynamicBeta:
 
         # Feature 4: Cumulative return (20-day, ending at t-1)
         cum_20 = ret_series.rolling(20).sum().shift(1).values
-        features[:, 4] = np.nan_to_num(cum_20, nan=0.0)
-
         features[:, 4] = np.nan_to_num(cum_20, nan=0.0)
         
         return cast(np.ndarray, features)
