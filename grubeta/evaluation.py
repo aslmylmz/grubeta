@@ -465,6 +465,7 @@ class DiagnosticTests:
             "p_value": result[1],
             "critical_values": result[4],
             "is_stationary": result[1] < significance,
+            "passed": result[1] < significance,
         }
 
     @staticmethod
@@ -510,8 +511,11 @@ class DiagnosticTests:
 
         lb_result = acorr_ljungbox(residuals, lags=lags, return_df=True)
 
+        has_autocorrelation = bool((lb_result["lb_pvalue"] < 0.05).any())
+
         return {
             "lb_statistic": lb_result["lb_stat"].values,
             "p_values": lb_result["lb_pvalue"].values,
-            "has_autocorrelation": (lb_result["lb_pvalue"] < 0.05).any(),
+            "has_autocorrelation": has_autocorrelation,
+            "passed": not has_autocorrelation,
         }

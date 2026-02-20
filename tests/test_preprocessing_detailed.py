@@ -1,8 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from grubeta.preprocessing import DataPreprocessor
-from grubeta.core import DynamicBetaConfig
+from grubeta.preprocessing import DataPreprocessor, FeatureConfig
 
 class TestPreprocessingDetailed:
     @pytest.fixture
@@ -17,7 +16,7 @@ class TestPreprocessingDetailed:
 
     @pytest.fixture
     def preprocessor(self):
-        config = DynamicBetaConfig()
+        config = FeatureConfig()
         return DataPreprocessor(config)
 
     def test_add_return_features(self, preprocessor, sample_data):
@@ -45,7 +44,9 @@ class TestPreprocessingDetailed:
         for w in preprocessor.config.ma_windows:
             col = f"test_ma_{w}_ratio"
             assert col in df.columns
-            assert not df[col].isnull().all()
+            # Windows larger than sample size will be all NaN — expected
+            if w < len(df):
+                assert not df[col].isnull().all()
 
     def test_add_volatility_features(self, preprocessor, sample_data):
         df = sample_data.copy()
@@ -95,7 +96,7 @@ class TestPreprocessingDetailed:
         
         # Check defaults
         assert "market_return" in df_res.columns
-        assert "market_volatility_21d" in df_res.columns
+        assert "market_volatility_20d" in df_res.columns
         
         # Check lagging logic
         # Default lag_features=True -> lag=1

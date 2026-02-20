@@ -240,8 +240,7 @@ def example_custom_config():
         verbose=1
     )
     
-    # Validate configuration
-    config.validate()
+    # Pydantic validates configuration on construction automatically
     
     # Create model with config
     model = DynamicBeta(config=config)

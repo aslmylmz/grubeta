@@ -55,19 +55,8 @@ class DynamicBetaConfig(BaseModel):
     lambda_alpha: float = Field(default=0.5, ge=0, description="Alpha sparsity penalty")
 
     # Initialization parameters
-    initial_beta: float = Field(default=0.0, description="Initial bias for beta")
+    initial_beta: float = Field(default=1.0, description="Initial bias for beta (1.0 = market-neutral prior)")
     initial_alpha: float = Field(default=0.0, description="Initial bias for alpha")
-
-    # Feature Engineering Parameters
-    include_technicals: bool = Field(default=False, description="Include TA lib technical indicators")
-    include_volume: bool = Field(default=True, description="Include volume features")
-    include_calendar: bool = Field(default=True, description="Include calendar features")
-    include_macro: bool = Field(default=False, description="Include macro features")
-    lag_features: bool = Field(default=True, description="Lag features by 1 step")
-    
-    ma_windows: List[int] = Field(default_factory=lambda: [5, 21, 63], description="Moving average windows")
-    volatility_windows: List[int] = Field(default_factory=lambda: [21, 63], description="Volatility windows")
-    roc_periods: List[int] = Field(default_factory=lambda: [1, 5, 21], description="Rate of change periods")
 
     # General
     random_seed: int = Field(default=42, description="Random seed")
@@ -173,19 +162,10 @@ class DynamicBeta:
     def __init__(self, config: Optional[DynamicBetaConfig] = None, **kwargs):
         if config is not None:
             self.config = config
-        if config is None:
-            # Pydantic validation happens here automatically
-            config = DynamicBetaConfig(**kwargs)
         else:
-            # If config object provided, ensure it's valid
-            # If using Pydantic, unexpected kwargs might raise error if passed to init
-            # But here we assume user passed correct object
-            pass
+            # Pydantic validation happens here automatically
+            self.config = DynamicBetaConfig(**kwargs)
 
-        self.config = config
-        # self.config.validate() # Handled by Pydantic
-
-        # Will be set after fitting
         # Will be set after fitting
         self.model_ = None
         self.scaler_market_ = PITStandardScaler()
@@ -304,7 +284,8 @@ class DynamicBeta:
         market_returns: Union[np.ndarray, pd.Series],
         market_features: Optional[np.ndarray] = None,
         stock_features: Optional[np.ndarray] = None,
-    ) -> Dict[str, np.ndarray]:
+        dates: Optional[Union[np.ndarray, pd.DatetimeIndex]] = None,
+    ) -> pd.DataFrame:
         """
         Predict dynamic beta for new data.
 
@@ -322,12 +303,14 @@ class DynamicBeta:
         stock_features : array-like, optional
             Additional stock features.
 
+        dates : array-like, optional
+            Date index for results.
+
         Returns
         -------
-        results : dict
-            Dictionary containing:
-            - 'beta': Time-varying beta estimates
-            - 'alpha': Time-varying alpha estimates
+        results : pd.DataFrame
+            DataFrame with columns: beta, alpha, stock_return, market_return
+            (and 'date' if provided). Same format as fit_predict().
         """
         self._check_is_fitted()
 
@@ -347,9 +330,7 @@ class DynamicBeta:
             market_features, stock_features, market_returns, stock_returns
         )
 
-        # Normalize using fitted scalers
-        # Note: Features are already scaled above, so we don't need _normalize_batch here
-        # X_m_norm, X_s_norm = self._normalize_batch(X_m, X_s, fit=False)
+        # Features are already scaled above
         X_m_norm, X_s_norm = X_m, X_s
 
         # Predict
@@ -357,12 +338,10 @@ class DynamicBeta:
         raw_pred = self.model_.predict([X_m_norm, X_s_norm, X_curr], verbose=0)
         betas, alphas = self._extract_predictions(raw_pred)
 
-        # Pad with NaN for alignment
-        n_pad = self.config.lookback
-        betas = np.concatenate([np.full(n_pad, np.nan), betas])
-        alphas = np.concatenate([np.full(n_pad, np.nan), alphas])
-
-        return {"beta": betas, "alpha": alphas}
+        # Build results DataFrame (same format as fit_predict)
+        return self._build_results_df(
+            betas, alphas, stock_returns, market_returns, dates
+        )
 
     def fit_predict(
         self,
@@ -371,6 +350,7 @@ class DynamicBeta:
         market_features: Optional[np.ndarray] = None,
         stock_features: Optional[np.ndarray] = None,
         dates: Optional[Union[np.ndarray, pd.DatetimeIndex]] = None,
+        **kwargs,
     ) -> pd.DataFrame:
         """
         Fit the model and return beta predictions using walk-forward validation.
@@ -496,13 +476,20 @@ class DynamicBeta:
         # Phase 3: Walk-forward
         curr_idx = init_size
         step = self.config.wf_step_size
+        total_steps = (n_samples - init_size + step - 1) // step
+        step_num = 0
 
         if self.config.verbose >= 1:
-            logger.info(f"Phase 2: Walk-forward (step={step})")
+            print(f"Walk-forward: {total_steps} steps (step_size={step})")
 
         while curr_idx < n_samples:
             end_idx = min(curr_idx + step, n_samples)
+            step_num += 1
             
+            if self.config.verbose >= 1:
+                pct = min(100, int(step_num / total_steps * 100))
+                print(f"  Step {step_num}/{total_steps} ({pct}%) — samples {curr_idx}..{end_idx}", end="\r")
+
             # Data is already PIT-scaled (Scale-Then-Sequence)
             X_m_next = X_m[curr_idx:end_idx]
             X_s_next = X_s[curr_idx:end_idx]
@@ -534,8 +521,8 @@ class DynamicBeta:
 
             curr_idx += step
 
-            if self.config.verbose >= 2:
-                logger.debug(f"Progress: {curr_idx}/{n_samples}")
+        if self.config.verbose >= 1:
+            print(f"  Walk-forward complete: {n_samples} samples processed.")
         
         # Ensure scalers are fitted for future inference
         # (This is now redundant since we fit() in fit method, but keeps walk_forward consistent)
@@ -704,7 +691,6 @@ class DynamicBeta:
         """Clean data by handling inf/nan values."""
         X = np.where(np.isinf(X), np.nan, X)
         X = np.nan_to_num(X, nan=0.0)
-        X = np.nan_to_num(X, nan=0.0)
         return cast(np.ndarray, np.clip(X, -100.0, 100.0))
 
     @staticmethod
@@ -728,6 +714,9 @@ class DynamicBeta:
         figsize: Tuple[int, int] = (12, 6),
         title: Optional[str] = None,
         save_path: Optional[str] = None,
+        benchmark_beta: Optional[np.ndarray] = None,
+        true_beta: Optional[np.ndarray] = None,
+        show_hedged: bool = False,
     ) -> None:
         """
         Plot the dynamic beta trajectory.
@@ -742,24 +731,56 @@ class DynamicBeta:
             Plot title.
         save_path : str, optional
             Path to save the figure.
+        benchmark_beta : np.ndarray, optional
+            Benchmark beta to overlay (e.g. rolling OLS).
+        true_beta : np.ndarray, optional
+            Ground-truth beta for synthetic / backtesting scenarios.
+        show_hedged : bool, default=False
+            If True, adds a second panel showing cumulative hedged returns.
         """
         import matplotlib.pyplot as plt
 
-        fig, ax = plt.subplots(figsize=figsize)
+        n_panels = 2 if show_hedged else 1
+        fig, axes = plt.subplots(n_panels, 1, figsize=(figsize[0], figsize[1] * n_panels),
+                                 sharex=True, squeeze=False)
+        ax = axes[0, 0]
 
         x = results["date"] if "date" in results.columns else results.index
-        ax.plot(
-            x, results["beta"], label="GRU Dynamic Beta", color="#2c3e50", linewidth=1.5
-        )
-        ax.axhline(
-            1.0, color="#e74c3c", linestyle="--", alpha=0.5, label="Market Beta (1.0)"
-        )
+
+        # Main beta line
+        ax.plot(x, results["beta"], label="GRU Dynamic Beta", color="#2c3e50", linewidth=1.5)
+        ax.axhline(1.0, color="#e74c3c", linestyle="--", alpha=0.5, label="Market Beta (1.0)")
+
+        # Optional overlays
+        if benchmark_beta is not None:
+            ax.plot(x, benchmark_beta[:len(x)], label="Benchmark (OLS)",
+                    color="#e67e22", linewidth=1.2, alpha=0.8)
+
+        if true_beta is not None:
+            ax.plot(x, true_beta[:len(x)], label="True Beta",
+                    color="#27ae60", linewidth=1.2, alpha=0.7)
 
         ax.set_title(title or "Dynamic Beta Evolution")
-        ax.set_xlabel("Date")
         ax.set_ylabel("Beta")
         ax.legend()
         ax.grid(True, alpha=0.3)
+
+        # Optional hedged returns panel
+        if show_hedged and n_panels == 2:
+            ax2 = axes[1, 0]
+            hedged = results["stock_return"] - results["beta"] * results["market_return"]
+            cum_hedged = (1 + hedged).cumprod()
+            cum_stock = (1 + results["stock_return"]).cumprod()
+
+            ax2.plot(x, cum_stock, label="Unhedged Stock", color="gray", alpha=0.5)
+            ax2.plot(x, cum_hedged, label="Hedged (GRU)", color="#2c3e50", linewidth=2)
+            ax2.set_ylabel("Growth of $1")
+            ax2.set_xlabel("Date")
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+
+        if not show_hedged:
+            ax.set_xlabel("Date")
 
         plt.tight_layout()
 
