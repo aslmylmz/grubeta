@@ -232,4 +232,4 @@ By contributing, you agree that your contributions will be licensed under the MI
 
 Feel free to open an issue for questions or reach out to the maintainers.
 
-Thank you for contributing! 🎉
+Thank you for contributing!
