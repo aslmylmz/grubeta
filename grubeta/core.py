@@ -53,6 +53,7 @@ class DynamicBetaConfig(BaseModel):
     # Loss function weights
     lambda_beta: float = Field(default=0.05, ge=0, description="Beta smoothness penalty")
     lambda_alpha: float = Field(default=0.5, ge=0, description="Alpha sparsity penalty")
+    lambda_alpha_smooth: float = Field(default=0.1, ge=0, description="Alpha temporal smoothness penalty")
 
     # Initialization parameters
     initial_beta: float = Field(default=1.0, description="Initial bias for beta (1.0 = market-neutral prior)")

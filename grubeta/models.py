@@ -68,10 +68,11 @@ class CAPMLoss:
     1. Accuracy: Huber loss on return predictions
     2. Stability: L2 penalty on beta changes over time
     3. Sparsity: L1 penalty on alpha (encouraging CAPM compliance)
+    4. Alpha Stability: L2 penalty on alpha changes over time
     """
 
     @staticmethod
-    def create_composite_loss(lookback: int, lambda_beta: float, lambda_alpha: float):
+    def create_composite_loss(lookback: int, lambda_beta: float, lambda_alpha: float, lambda_alpha_smooth: float = 0.0):
         """
         Create the CAPM composite loss function.
 
@@ -83,6 +84,8 @@ class CAPMLoss:
             Weight for beta stability term.
         lambda_alpha : float
             Weight for alpha sparsity term.
+        lambda_alpha_smooth : float, default=0.0
+            Weight for alpha temporal smoothness term.
 
         Returns
         -------
@@ -93,7 +96,7 @@ class CAPMLoss:
 
         def capm_loss(y_true, y_pred_concatenated):
             """
-            Composite loss: Accuracy + Stability + Sparsity.
+            Composite loss: Accuracy + Stability + Sparsity + Alpha Stability.
 
             Output structure: [Return(1) | Beta_Seq(L) | Alpha_Seq(L)]
             """
@@ -118,10 +121,16 @@ class CAPMLoss:
             # Encourage alpha to be small (CAPM assumption)
             loss_sparsity = tf.reduce_mean(tf.abs(alpha_seq))
 
+            # Component 4: Alpha Stability (temporal smoothness)
+            # Penalize rapid changes in alpha over time
+            alpha_diff = alpha_seq[:, 1:, :] - alpha_seq[:, :-1, :]
+            loss_alpha_stability = tf.reduce_mean(tf.square(alpha_diff))
+
             return (
                 loss_accuracy
                 + (lambda_beta * loss_stability)
                 + (lambda_alpha * loss_sparsity)
+                + (lambda_alpha_smooth * loss_alpha_stability)
             )
 
         return capm_loss
@@ -276,7 +285,8 @@ class GRUBetaModel:
 
         # Compile with composite loss
         loss_fn = CAPMLoss.create_composite_loss(
-            self.config.lookback, self.config.lambda_beta, self.config.lambda_alpha
+            self.config.lookback, self.config.lambda_beta, self.config.lambda_alpha,
+            self.config.lambda_alpha_smooth
         )
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=self.config.learning_rate)
@@ -304,7 +314,8 @@ class GRUBetaModel:
         """
         return {
             "capm_loss": CAPMLoss.create_composite_loss(
-                config.lookback, config.lambda_beta, config.lambda_alpha
+                config.lookback, config.lambda_beta, config.lambda_alpha,
+                config.lambda_alpha_smooth
             ),
             "mae_metric": CAPMLoss.mae_metric,
             "extract_last_step": extract_last_step,
@@ -431,7 +442,8 @@ class DualPathwayGRU(GRUBetaModel):
         )
 
         loss_fn = CAPMLoss.create_composite_loss(
-            self.config.lookback, self.config.lambda_beta, self.config.lambda_alpha
+            self.config.lookback, self.config.lambda_beta, self.config.lambda_alpha,
+            self.config.lambda_alpha_smooth
         )
 
         self.model.compile(
