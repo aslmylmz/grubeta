@@ -91,8 +91,9 @@ class DynamicBeta:
 
     The loss function combines:
     - Prediction accuracy (Huber loss on return prediction)
-    - Beta stability (penalizes rapid changes)
+    - Beta stability (L2 penalty on temporal changes)
     - Alpha sparsity (L1 penalty, encouraging market efficiency)
+    - Alpha stability (L2 penalty on temporal changes)
 
     Parameters
     ----------

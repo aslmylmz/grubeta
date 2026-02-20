@@ -315,7 +315,7 @@ class GRUBetaModel:
         return {
             "capm_loss": CAPMLoss.create_composite_loss(
                 config.lookback, config.lambda_beta, config.lambda_alpha,
-                config.lambda_alpha_smooth
+                getattr(config, 'lambda_alpha_smooth', 0.0)
             ),
             "mae_metric": CAPMLoss.mae_metric,
             "extract_last_step": extract_last_step,

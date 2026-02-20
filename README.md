@@ -8,12 +8,12 @@
 
 ## Key Features
 
--  **GRU-based estimation**: Captures complex temporal patterns in beta dynamics
--  **Walk-forward validation**: Prevents lookahead bias with proper out-of-sample testing
--  **Composite loss function**: Balances prediction accuracy, beta stability, and alpha sparsity
--  **Flexible input modes**: Use simple returns or full feature engineering
--  **Built-in evaluation**: Comprehensive metrics and benchmark comparisons
--  **Production-ready**: GPU support, model persistence, and extensive documentation
+- **GRU-based estimation**: Captures complex temporal patterns in beta dynamics
+- **Walk-forward validation**: Prevents lookahead bias with proper out-of-sample testing
+- **Composite loss function**: Balances prediction accuracy, beta stability, alpha sparsity, and alpha temporal smoothness
+- **Flexible input modes**: Use simple returns or full feature engineering
+- **Built-in evaluation**: Comprehensive metrics and benchmark comparisons
+- **Production-ready**: GPU support, model persistence, and extensive documentation
 
 ## Installation
 
@@ -88,8 +88,9 @@ features = preprocessor.prepare(
 # Estimate with features
 model = DynamicBeta(
     lookback=90,
-    lambda_beta=0.05,   # Beta stability weight
-    lambda_alpha=0.5,   # Alpha sparsity weight
+    lambda_beta=0.05,          # Beta stability weight
+    lambda_alpha=0.5,          # Alpha sparsity weight
+    lambda_alpha_smooth=0.1,   # Alpha temporal smoothness weight
 )
 results = model.fit_predict(**features)
 ```
@@ -136,14 +137,15 @@ Stock Features ──→ [GRU] ──→ Alpha(t)
 
 ### Loss Function
 
-The composite loss balances three objectives:
+The composite loss balances four objectives:
 
 1. **Accuracy**: Huber loss on return predictions
-2. **Stability**: L2 penalty on beta changes (temporal smoothness)
-3. **Sparsity**: L1 penalty on alpha (CAPM compliance)
+2. **Beta Stability**: L2 penalty on beta changes (temporal smoothness)
+3. **Alpha Sparsity**: L1 penalty on alpha magnitude (CAPM compliance)
+4. **Alpha Stability**: L2 penalty on alpha changes (temporal smoothness)
 
 ```
-L = L_accuracy + λ_β × L_stability + λ_α × L_sparsity
+L = L_accuracy + λ_β × L_beta_stability + λ_α × L_sparsity + λ_α_smooth × L_alpha_stability
 ```
 
 ## Configuration
@@ -160,6 +162,7 @@ L = L_accuracy + λ_β × L_stability + λ_α × L_sparsity
 | `dropout_rate` | 0.2 | Dropout regularization |
 | `lambda_beta` | 0.05 | Beta stability weight |
 | `lambda_alpha` | 0.5 | Alpha sparsity weight |
+| `lambda_alpha_smooth` | 0.1 | Alpha temporal smoothness weight |
 
 ### Feature Configuration
 
@@ -191,6 +194,7 @@ DynamicBeta(
     lookback: int = 90,
     lambda_beta: float = 0.05,
     lambda_alpha: float = 0.5,
+    lambda_alpha_smooth: float = 0.1,
     **kwargs
 )
 ```
