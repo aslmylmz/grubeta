@@ -56,7 +56,8 @@ Here's a complete example using pandas:
    model = DynamicBeta(
        lookback=60,            # 60-day lookback window
        lambda_beta=0.05,       # Beta stability weight
-       lambda_alpha=0.5        # Alpha sparsity weight
+       lambda_alpha=0.5,       # Alpha sparsity weight
+       lambda_alpha_smooth=0.1 # Alpha temporal smoothness weight
    )
    
    results = model.fit_predict(
@@ -121,6 +122,9 @@ The most important parameters to tune:
    * - ``lambda_alpha``
      - 0.5
      - Alpha sparsity weight. Higher = alpha closer to zero.
+   * - ``lambda_alpha_smooth``
+     - 0.1
+     - Alpha temporal smoothness weight. Higher = smoother alpha trajectory.
    * - ``initial_train_size``
      - 500
      - Samples for initial training before walk-forward begins.

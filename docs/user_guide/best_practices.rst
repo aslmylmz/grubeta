@@ -86,6 +86,20 @@ Lambda Alpha (Sparsity)
    # For alpha estimation focus
    lambda_alpha = 0.05
 
+Lambda Alpha Smooth (Temporal Smoothness)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # For efficient markets (alpha should be stable near zero)
+   lambda_alpha_smooth = 0.1 to 0.2
+
+   # If stock has genuine time-varying alpha
+   lambda_alpha_smooth = 0.02 to 0.05
+
+   # For maximum smoothness
+   lambda_alpha_smooth = 0.2
+
 Walk-Forward Step Size
 ~~~~~~~~~~~~~~~~~~~~~~
 

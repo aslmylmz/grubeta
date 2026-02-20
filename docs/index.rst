@@ -31,7 +31,7 @@ Key Features
 
 * **GRU-based estimation** - Captures complex temporal patterns in beta dynamics
 * **Walk-forward validation** - Prevents lookahead bias with proper out-of-sample testing  
-* **Composite loss function** - Balances prediction accuracy, beta stability, and alpha sparsity
+* **Composite loss function** - Balances prediction accuracy, beta stability, alpha sparsity, and alpha temporal smoothness
 * **Flexible input modes** - Use simple returns or full feature engineering
 * **Built-in evaluation** - Comprehensive metrics and benchmark comparisons
 * **Production-ready** - GPU support, model persistence, and extensive documentation

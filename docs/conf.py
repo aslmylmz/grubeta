@@ -16,8 +16,8 @@ copyright = f'{datetime.now().year}, Ahmet Selim Yılmaz'
 author = 'Ahmet Selim Yılmaz'
 
 # Version info
-release = '0.1.1'
-version = '0.1.1'
+release = '0.1.3'
+version = '0.1.3'
 
 # -- General configuration ---------------------------------------------------
 

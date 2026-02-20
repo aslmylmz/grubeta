@@ -52,17 +52,18 @@ The GRU Dynamic Beta model uses a dual-pathway architecture:
 Loss Function
 ~~~~~~~~~~~~~
 
-The composite loss combines three objectives:
+The composite loss combines four objectives:
 
 .. math::
 
-   L = L_{accuracy} + \lambda_\beta \cdot L_{stability} + \lambda_\alpha \cdot L_{sparsity}
+   L = L_{accuracy} + \lambda_\beta \cdot L_{\beta\_stability} + \lambda_\alpha \cdot L_{sparsity} + \lambda_{\alpha\_smooth} \cdot L_{\alpha\_stability}
 
 Where:
 
 * :math:`L_{accuracy}` = Huber loss on return predictions
-* :math:`L_{stability}` = L2 penalty on :math:`\beta_{t} - \beta_{t-1}`
+* :math:`L_{\beta\_stability}` = L2 penalty on :math:`\beta_{t} - \beta_{t-1}`
 * :math:`L_{sparsity}` = L1 penalty on alpha values
+* :math:`L_{\alpha\_stability}` = L2 penalty on :math:`\alpha_{t} - \alpha_{t-1}`
 
 Example: Custom Model
 ---------------------

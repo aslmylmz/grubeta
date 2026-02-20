@@ -30,7 +30,7 @@ Author: Ahmet Selim Yılmaz
 License: MIT
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __author__ = "Ahmet Selim Yılmaz"
 __license__ = "MIT"
 

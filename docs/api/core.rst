@@ -39,7 +39,8 @@ Basic Usage
    model = DynamicBeta(
        lookback=60,
        lambda_beta=0.05,
-       lambda_alpha=0.5
+       lambda_alpha=0.5,
+       lambda_alpha_smooth=0.1
    )
    
    # Fit and predict
@@ -58,7 +59,8 @@ Using Configuration Object
        wf_step_size=126,
        learning_rate=1e-4,
        lambda_beta=0.05,
-       lambda_alpha=0.5
+       lambda_alpha=0.5,
+       lambda_alpha_smooth=0.1
    )
    
    model = DynamicBeta(config=config)

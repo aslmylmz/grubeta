@@ -3,8 +3,37 @@ Changelog
 
 All notable changes to GRU Dynamic Beta will be documented here.
 
+[0.1.3] - 2026-02-20
+---------------------
+
+Added
+~~~~~
+
+* ``lambda_alpha_smooth`` hyperparameter for L2 temporal smoothness penalty on alpha
+* 4-component composite loss function (accuracy, beta stability, alpha sparsity, alpha stability)
+
+Changed
+~~~~~~~
+
+* ``CAPMLoss.create_composite_loss`` now accepts ``lambda_alpha_smooth`` parameter
+* Default ``lambda_alpha_smooth=0.1`` (2x beta smoothness weight, reflecting that alpha should be smoother than beta under CAPM)
+
+[0.1.2] - 2026-02-11
+---------------------
+
+Fixed
+~~~~~
+
+* Critical: ``pydantic`` dependency now correctly included in published package
+* Publish workflow no longer depends on deleted ``testpypi`` environment
+* Migrated to Pydantic V2 validators (``@field_validator``, ``ConfigDict``)
+* Removed duplicate line in ``_create_return_features``
+* Aligned minimum Python version to 3.9 across all metadata
+* Reverted ``initial_beta`` default to ``0.0`` for stability
+* Removed stray ``verify_revert.py`` from repository
+
 [0.1.0] - 2026-01-23
---------------------
+---------------------
 
 Initial release.
 

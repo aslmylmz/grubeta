@@ -177,11 +177,11 @@ Control the walk-forward validation process:
 Loss Function Tuning
 --------------------
 
-The composite loss balances three objectives:
+The composite loss balances four objectives:
 
 .. math::
 
-   L = L_{accuracy} + \lambda_\beta \cdot L_{stability} + \lambda_\alpha \cdot L_{sparsity}
+   L = L_{accuracy} + \lambda_\beta \cdot L_{\beta\_stability} + \lambda_\alpha \cdot L_{sparsity} + \lambda_{\alpha\_smooth} \cdot L_{\alpha\_stability}
 
 Lambda Beta (Stability)
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -214,6 +214,22 @@ Controls alpha magnitude:
    
    # Default
    model = DynamicBeta(lambda_alpha=0.5)
+
+Lambda Alpha Smooth (Temporal Smoothness)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Controls alpha temporal stability:
+
+.. code-block:: python
+
+   # High smoothness (alpha changes slowly over time)
+   model = DynamicBeta(lambda_alpha_smooth=0.2)
+
+   # Low smoothness (allows rapid alpha changes)
+   model = DynamicBeta(lambda_alpha_smooth=0.02)
+
+   # Default (2x beta smoothness, since alpha should be even smoother)
+   model = DynamicBeta(lambda_alpha_smooth=0.1)
 
 Network Architecture
 --------------------

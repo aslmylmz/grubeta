@@ -43,6 +43,7 @@ For more control, use :class:`~grubeta.DynamicBetaConfig`:
        dropout_rate=0.2,
        lambda_beta=0.05,
        lambda_alpha=0.5,
+       lambda_alpha_smooth=0.1,
        epochs_init=40,
        epochs_retrain=4,
        verbose=1
