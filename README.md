@@ -99,10 +99,10 @@ result = estimate_beta("AAPL", "SPY", preset="research")
 
 | Preset | Best For | Lookback | Retraining |
 |--------|----------|----------|------------|
-| `default` | General analysis | 3 months | Quarterly |
-| `responsive` | Event studies, tactical allocation | 1 month | Monthly |
-| `smooth` | Strategic portfolio construction | 6 months | Annually |
-| `research` | Academic papers, comprehensive analysis | 3 months | Quarterly + all features |
+| `default` | General analysis | 3 months (60 days) | Semi-annually (126 days) |
+| `responsive` | Event studies, tactical allocation | 6 weeks (30 days) | Monthly (21 days) |
+| `smooth` | Strategic portfolio construction | 6 months (120 days) | Annually (252 days) |
+| `research` | Academic papers, enhanced model capacity | ~4 months (90 days) | Quarterly (63 days) |
 
 ### Command Line
 

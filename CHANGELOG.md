@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated to Pydantic V2 validators (`@field_validator`, `ConfigDict`)
 - Removed duplicate line in `_create_return_features`
 - Aligned minimum Python version to 3.9 across all metadata
-- Reverted `initial_beta` default to `0.0` for stability
+- Added `initial_beta` (default=1.0) and `initial_alpha` (default=0.0) config parameters
 - Removed stray `verify_revert.py` from repository
 
 ## [0.1.1] - 2026-02-06
@@ -75,14 +75,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Future Plans
 
-### [0.2.0] - Planned
+### [0.3.0] - Planned
 - Attention mechanism for beta pathway
 - Transformer-based alternative model
 - Regime detection integration
 - Real-time prediction mode
 - Extended benchmark comparisons (DCC-GARCH, Kalman)
 
-### [0.3.0] - Planned
+### [0.4.0] - Planned
 - Multi-asset portfolio beta estimation
 - Factor model extension (Fama-French)
 - Confidence intervals for beta estimates

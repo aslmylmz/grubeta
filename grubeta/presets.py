@@ -37,7 +37,7 @@ PRESETS = {
 }
 
 PRESET_DESCRIPTIONS = {
-    "default": "Balanced settings for most use cases (3-month lookback, quarterly retraining)",
+    "default": "Balanced settings for most use cases (3-month lookback, semi-annual retraining)",
     "responsive": "Captures rapid beta changes (1-month lookback, monthly retraining) — good for event studies, earnings reactions",
     "smooth": "Stable estimates for long-term portfolio construction (6-month lookback, annual retraining)",
     "research": "Enhanced model capacity for academic analysis (128 GRU units, longer training, finer walk-forward steps)",
