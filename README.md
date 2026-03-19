@@ -18,7 +18,7 @@ In the CAPM framework, **beta (β)** measures how much a stock moves relative to
 | β = 1 | Moves with the market | Index-tracking ETFs |
 | β < 1 | Dampens market moves — lower risk, lower expected return | Utilities, consumer staples |
 
-Traditional beta is estimated as a **single static number** over a historical window. But in reality, beta **changes over time** — a stock's market sensitivity shifts during crises, earnings announcements, sector rotations, and regime changes.
+Traditional beta is estimated as a **single static number** over a historical window. But in reality, beta **changes over time**. A stock's market sensitivity shifts during crises, earnings announcements, sector rotations, and regime changes.
 
 **grubeta** captures these dynamics using a neural network that learns temporal patterns in beta, while ensuring all estimates are free from lookahead bias through walk-forward validation.
 
@@ -234,7 +234,7 @@ Full API documentation: [grubeta.readthedocs.io](https://grubeta.readthedocs.io)
 
 ```bibtex
 @software{grubeta2026,
-  author = {Y{\i}lmaz, Ahmet Selim},
+  author = {YILMAZ, Ahmet Selim},
   title = {grubeta: GRU-based Dynamic Beta Estimation for Time-Varying Systematic Risk},
   year = {2026},
   url = {https://github.com/aslmylmz/grubeta}
