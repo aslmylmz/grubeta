@@ -275,34 +275,22 @@ def estimate_beta(
     if verbose:
         print(f"Preparing features ({len(stock_returns)} trading days)...")
 
-    # Use DataPreprocessor for research preset, simple mode otherwise
-    if preset == "research":
-        from grubeta.preprocessing import DataPreprocessor, FeatureConfig
+    if preset == "research" and verbose:
+        print(
+            "Note: The 'research' preset uses enhanced model capacity (128 GRU units, "
+            "longer training). For full OHLCV feature engineering, use DynamicBeta with "
+            "DataPreprocessor directly."
+        )
 
-        feat_config = FeatureConfig(
-            include_technicals=True,
-            include_macro=True,
-            include_volume=True,
-            include_calendar=True,
-        )
-        preprocessor = DataPreprocessor(feat_config)
-        # Build a minimal OHLCV-like DataFrame from returns for preprocessing
-        # For ticker-based input, we need the full price data
-        # Fall back to simple mode if we only have returns
-        features = preprocessor.prepare_simple(
-            stock_returns=stock_returns,
-            market_returns=market_returns,
-            dates=stock_returns.index,
-        )
-    else:
-        from grubeta.preprocessing import DataPreprocessor
+    # All presets use simple mode through convenience API
+    from grubeta.preprocessing import DataPreprocessor
 
-        preprocessor = DataPreprocessor()
-        features = preprocessor.prepare_simple(
-            stock_returns=stock_returns,
-            market_returns=market_returns,
-            dates=stock_returns.index,
-        )
+    preprocessor = DataPreprocessor()
+    features = preprocessor.prepare_simple(
+        stock_returns=stock_returns,
+        market_returns=market_returns,
+        dates=stock_returns.index,
+    )
 
     if verbose:
         print(f"Training model with walk-forward validation (preset='{preset}')...")
@@ -402,7 +390,6 @@ def compare_betas(
     import matplotlib.pyplot as plt
 
     all_results = {}
-    beta_df = pd.DataFrame()
 
     for ticker in stocks:
         print(f"\n{'='*50}")
@@ -418,13 +405,17 @@ def compare_betas(
             verbose=True,
         )
         all_results[ticker] = result
-        beta_col = result["beta"].copy()
-        beta_col.name = ticker
-        if beta_df.empty:
-            beta_df = pd.DataFrame({ticker: beta_col})
-            beta_df.index = result["dates"]
-        else:
-            beta_df[ticker] = beta_col.values[: len(beta_df)]
+
+    # Build DataFrame with proper date alignment
+    beta_dict = {}
+    for ticker in stocks:
+        r = all_results[ticker]
+        beta_s = r["beta"].copy()
+        beta_s.index = r["dates"]
+        beta_s.name = ticker
+        beta_dict[ticker] = beta_s
+
+    beta_df = pd.DataFrame(beta_dict)  # Auto-aligns on index
 
     # Build comparison summary
     summary_lines = ["Beta Comparison Summary", "=" * 50]

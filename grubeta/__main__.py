@@ -42,6 +42,7 @@ Examples:
         "--preset",
         "-p",
         default="default",
+        # NOTE: Keep in sync with grubeta/presets.py PRESETS dict
         choices=["default", "responsive", "smooth", "research"],
         help="Configuration preset (default: 'default')",
     )

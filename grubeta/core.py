@@ -6,6 +6,7 @@ using GRU neural networks. It supports both simple (returns-only) and
 advanced (multi-feature) estimation modes.
 """
 
+import importlib.metadata
 import logging
 import warnings
 from datetime import datetime
@@ -531,7 +532,7 @@ class DynamicBeta:
 
             # Incremental retraining
             if end_idx < n_samples:
-                train_window = 500
+                train_window = max(self.config.initial_train_size, 500)
                 start_train = max(0, end_idx - train_window)
 
                 self.model_.fit(  # type: ignore[union-attr]
@@ -556,7 +557,7 @@ class DynamicBeta:
         
         # Issue Temporal Certificate
         self._temporal_certificate = TemporalCertificate(
-            model_version="0.2.0-pit",
+            model_version=f"grubeta-{importlib.metadata.version('grubeta')}",
             training_window=(str(0), str(init_size)),
             prediction_window=(str(init_size), str(n_samples)),
             scaler_policy="PIT_EXPANDING_WINDOW",

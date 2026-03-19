@@ -162,6 +162,7 @@ metrics = evaluator.evaluate(results['beta'], results['stock_return'], results['
 | `lookback` | 90 | How many days of history the model sees at each step |
 | `initial_train_size` | 500 | Minimum training samples before first prediction (~2 years) |
 | `wf_step_size` | 126 | How often the model retrains (trading days) |
+| `batch_size` | 20 | Training batch size |
 | `learning_rate` | 1e-4 | Adam optimizer learning rate |
 | `gru_units` | 128 | Neural network hidden layer size |
 | `dropout_rate` | 0.2 | Regularization strength |

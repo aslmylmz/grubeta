@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - Unreleased
+
+### Added
+- High-level convenience API: `estimate_beta()`, `compare_betas()`, `quick_report()`
+- Named configuration presets: default, responsive, smooth, research
+- Command-line interface: `python -m grubeta AAPL SPY`
+- Custom exception classes with finance-friendly error messages
+- 4 Jupyter notebook tutorials (quickstart, hedging, comparison, research)
+- `format_summary()` for human-readable beta summaries
+- `grubeta[data]` optional dependency group for yfinance
+
+### Changed
+- README rewritten with finance-first framing
+- Project description updated in pyproject.toml
+- Research preset description clarified (enhanced model capacity, not full features via convenience API)
+- Walk-forward train window now derives from config instead of hardcoded 500
+- TemporalCertificate uses actual package version
+
 ## [0.1.3] - 2026-02-20
 
 ### Added

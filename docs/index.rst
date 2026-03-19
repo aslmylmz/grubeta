@@ -91,6 +91,8 @@ Documentation
    :maxdepth: 2
    :caption: API Reference
 
+   api/convenience
+   api/presets
    api/core
    api/preprocessing
    api/models
