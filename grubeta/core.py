@@ -393,6 +393,8 @@ class DynamicBeta:
         >>> results = model.fit_predict(stock_returns, market_returns)
         >>> print(results.dropna().head())
         """
+        from grubeta.exceptions import GrubetaError
+
         # Convert inputs
         stock_returns = self._to_array(stock_returns)
         market_returns = self._to_array(market_returns)
@@ -406,13 +408,13 @@ class DynamicBeta:
         # Scale 2D features before creating 3D sequences to ensure correct PIT logic
         # and avoid 3D scaling complexity issues.
         lookback = self.config.lookback
-        
+
         if self.config.verbose >= 1:
             logger.info("Applying Point-in-Time (PIT) Scaling on features...")
-            
+
         market_features = self.scaler_market_.fit_transform_pit(market_features, min_periods=lookback)
         stock_features = self.scaler_stock_.fit_transform_pit(stock_features, min_periods=lookback)
-        
+
         # Ensure scalers are fitted for inference (predict) using end-of-training state
         self.scaler_market_.fit(market_features)
         self.scaler_stock_.fit(stock_features)
@@ -426,8 +428,31 @@ class DynamicBeta:
         self._n_market_features = X_m.shape[2]
         self._n_stock_features = X_s.shape[2]
 
-        # Run walk-forward training/prediction
-        betas, alphas = self._walk_forward(X_m, X_s, X_curr, y)
+        # Run walk-forward training/prediction with user-friendly error handling
+        try:
+            betas, alphas = self._walk_forward(X_m, X_s, X_curr, y)
+        except (ValueError, RuntimeError) as e:
+            err_msg = str(e).lower()
+            if "nan" in err_msg or "inf" in err_msg:
+                raise GrubetaError(
+                    "Training failed — the model received NaN values. "
+                    "This usually means the stock data has gaps or extreme outliers. "
+                    "Try a different date range."
+                ) from e
+            raise GrubetaError(f"Training failed: {e}") from e
+        except MemoryError:
+            raise GrubetaError(
+                f"Out of memory — try reducing gru_units (current: {self.config.gru_units}) "
+                f"or lookback (current: {self.config.lookback}), or use the 'default' preset."
+            )
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "oom" in err_msg or "memory" in err_msg or "resource exhausted" in err_msg:
+                raise GrubetaError(
+                    f"Out of memory — try reducing gru_units (current: {self.config.gru_units}) "
+                    f"or lookback (current: {self.config.lookback}), or use the 'default' preset."
+                ) from e
+            raise
 
         self.is_fitted_ = True
 

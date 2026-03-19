@@ -1,390 +1,253 @@
-# GRU Dynamic Beta
+# grubeta — Dynamic Beta Estimation
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://img.shields.io/pypi/v/grubeta.svg)](https://pypi.org/project/grubeta/)
 [![Documentation Status](https://readthedocs.org/projects/grubeta/badge/?version=latest)](https://grubeta.readthedocs.io)
 
-**GRU Dynamic Beta** is a Python library for estimating time-varying systematic risk (beta) using Gated Recurrent Unit neural networks within the CAPM framework.
+> Estimate how a stock's market sensitivity (beta) changes over time,
+> powered by neural networks with built-in safeguards against lookahead bias.
 
-## Key Features
+## What is Dynamic Beta?
 
-- **GRU-based estimation**: Captures complex temporal patterns in beta dynamics
-- **Walk-forward validation**: Prevents lookahead bias with proper out-of-sample testing
-- **Composite loss function**: Balances prediction accuracy, beta stability, alpha sparsity, and alpha temporal smoothness
-- **Flexible input modes**: Use simple returns or full feature engineering
-- **Built-in evaluation**: Comprehensive metrics and benchmark comparisons
-- **Production-ready**: GPU support, model persistence, and extensive documentation
+In the CAPM framework, **beta (β)** measures how much a stock moves relative to the market:
 
-## Installation
+| Beta | Meaning | Example |
+|------|---------|---------|
+| β > 1 | Amplifies market moves — higher risk, higher expected return | Growth/tech stocks |
+| β = 1 | Moves with the market | Index-tracking ETFs |
+| β < 1 | Dampens market moves — lower risk, lower expected return | Utilities, consumer staples |
 
-### Basic Installation
+Traditional beta is estimated as a **single static number** over a historical window. But in reality, beta **changes over time** — a stock's market sensitivity shifts during crises, earnings announcements, sector rotations, and regime changes.
 
-```bash
-pip install grubeta
-```
-
-### Full Installation (with technical analysis features)
-
-```bash
-pip install grubeta[full]
-```
-
-### Development Installation
-
-```bash
-git clone https://github.com/aslmylmz/grubeta.git
-cd grubeta
-pip install -e ".[dev]"
-```
+**grubeta** captures these dynamics using a neural network that learns temporal patterns in beta, while ensuring all estimates are free from lookahead bias through walk-forward validation.
 
 ## Quick Start
 
-### Simple Usage (Returns Only)
-
-The simplest way to estimate dynamic beta using only stock and market returns:
-
 ```python
-import pandas as pd
-import numpy as np
-from grubeta import DynamicBeta
+from grubeta import estimate_beta
 
-# 1. Generate dummy data so the example "just works"
-dates = pd.date_range('2020-01-01', periods=1000)
-market_returns = np.random.normal(0.0005, 0.01, 1000)
-# Stock return = beta * market + noise (simulating a beta of 1.2)
-stock_returns = 1.2 * market_returns + np.random.normal(0, 0.005, 1000)
-
-# 2. Fit and predict
-model = DynamicBeta(lookback=60)
-results = model.fit_predict(stock_returns, market_returns, dates=dates)
-
-# 3. See the results
-print(results.tail())
-model.plot_beta(results)
+# Estimate AAPL's time-varying beta relative to S&P 500
+result = estimate_beta("AAPL", "SPY")
+print(result["summary"])
 ```
 
-### Advanced Usage (With Features)
+**Output:**
+```
+AAPL Dynamic Beta Summary (2016-03-19 to 2026-03-19)
+─────────────────────────────────────────────────────
+  Current Beta:     1.18
+  Average Beta:     1.12
+  Beta Range:       0.85 → 1.42
+  Stability:        0.034 (daily change std)
+  Systematic R²:    0.52
 
-For better results, use the full preprocessing pipeline:
-
-```python
-from grubeta import DynamicBeta, DataPreprocessor, FeatureConfig
-
-# Configure feature engineering
-config = FeatureConfig(
-    include_technicals=True,
-    include_macro=True,
-    lag_features=True  # Critical for preventing lookahead bias
-)
-
-# Prepare features
-preprocessor = DataPreprocessor(config)
-features = preprocessor.prepare(
-    stock_df=stock_ohlcv,    # OHLCV data
-    market_df=market_ohlcv,  # Market index OHLCV
-    macro_df=macro_data      # Macroeconomic indicators
-)
-
-# Estimate with features
-model = DynamicBeta(
-    lookback=90,
-    lambda_beta=0.05,          # Beta stability weight
-    lambda_alpha=0.5,          # Alpha sparsity weight
-    lambda_alpha_smooth=0.1,   # Alpha temporal smoothness weight
-)
-results = model.fit_predict(**features)
+  Interpretation: AAPL currently amplifies S&P 500 moves by ~18%.
+  A 1% market drop implies a ~1.18% drop in AAPL.
 ```
 
-### Model Evaluation
+![Example dynamic beta trajectory](docs/assets/example_beta_plot.png)
 
-```python
-from grubeta import BetaEvaluator
-from grubeta.utils import rolling_ols_beta
+## Installation
 
-# Create evaluator
-evaluator = BetaEvaluator(output_dir='./results')
-
-# Compute benchmark
-ols_beta = rolling_ols_beta(
-    results['stock_return'], 
-    results['market_return'],
-    window=252
-)
-
-# Compare models
-comparison = evaluator.compare_models(
-    {
-        'GRU': results['beta'].values,
-        'Rolling OLS': ols_beta,
-    },
-    results['stock_return'].values,
-    results['market_return'].values,
-)
-print(comparison)
+```bash
+pip install grubeta              # core package
+pip install grubeta[data]        # + yfinance for ticker symbol support
+pip install grubeta[full]        # + technical indicators (RSI, MACD, etc.)
 ```
 
-## Architecture
-
-The GRU Dynamic Beta model uses a dual-pathway architecture:
-
-```
-Market Features ──→ [GRU] ──→ Beta(t)
-                              ↓
-                    R_stock = α + β × R_market
-                              ↑
-Stock Features ──→ [GRU] ──→ Alpha(t)
-```
-
-### Loss Function
-
-The composite loss balances four objectives:
-
-1. **Accuracy**: Huber loss on return predictions
-2. **Beta Stability**: L2 penalty on beta changes (temporal smoothness)
-3. **Alpha Sparsity**: L1 penalty on alpha magnitude (CAPM compliance)
-4. **Alpha Stability**: L2 penalty on alpha changes (temporal smoothness)
-
-```
-L = L_accuracy + λ_β × L_beta_stability + λ_α × L_sparsity + λ_α_smooth × L_alpha_stability
-```
-
-## Configuration
-
-### Model Hyperparameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `lookback` | 90 | Sequence length for GRU input |
-| `initial_train_size` | 500 | Samples for initial training |
-| `wf_step_size` | 126 | Walk-forward step size |
-| `learning_rate` | 1e-4 | Adam optimizer learning rate |
-| `gru_units` | 128 | GRU hidden units |
-| `dropout_rate` | 0.2 | Dropout regularization |
-| `lambda_beta` | 0.05 | Beta stability weight |
-| `lambda_alpha` | 0.5 | Alpha sparsity weight |
-| `lambda_alpha_smooth` | 0.1 | Alpha temporal smoothness weight |
-
-### Feature Configuration
-
-```python
-from grubeta import FeatureConfig
-
-config = FeatureConfig(
-    lag_features=True,        # Prevent lookahead bias
-    include_technicals=True,  # RSI, MACD, ADX, etc.
-    include_macro=True,       # Macro indicators
-    include_volume=True,      # Volume-based features
-    include_calendar=True,    # Day of week, month end, etc.
-    ma_windows=[5, 10, 20, 50, 100, 200],
-    volatility_windows=[5, 10, 20, 60],
-)
-```
-
-## API Reference
-
-### Core Classes
-
-#### `DynamicBeta`
-
-Main estimator class for GRU-based dynamic beta estimation.
-
-```python
-DynamicBeta(
-    config: DynamicBetaConfig = None,
-    lookback: int = 90,
-    lambda_beta: float = 0.05,
-    lambda_alpha: float = 0.5,
-    lambda_alpha_smooth: float = 0.1,
-    **kwargs
-)
-```
-
-**Methods:**
-
-- `fit(stock_returns, market_returns, ...)` - Fit the model
-- `predict(stock_returns, market_returns, ...)` - Predict beta for new data
-- `fit_predict(stock_returns, market_returns, ...)` - Fit and predict with walk-forward validation
-- `save(path)` - Save model to disk
-- `load(path)` - Load model from disk
-- `plot_beta(results, ...)` - Visualize beta trajectory
-
-#### `DataPreprocessor`
-
-Feature engineering pipeline with lookahead bias prevention.
-
-```python
-DataPreprocessor(config: FeatureConfig = None)
-```
-
-**Methods:**
-
-- `prepare_simple(stock_returns, market_returns, ...)` - Minimal preprocessing
-- `prepare(stock_df, market_df, macro_df)` - Full feature engineering
-
-#### `BetaEvaluator`
-
-Evaluation suite for dynamic beta estimates.
-
-```python
-BetaEvaluator(output_dir: str = None)
-```
-
-**Methods:**
-
-- `evaluate(betas, stock_returns, market_returns, ...)` - Comprehensive evaluation
-- `compare_models(betas_dict, stock_returns, market_returns)` - Model comparison
-
-### Utility Functions
-
-```python
-from grubeta.utils import (
-    validate_no_lookahead,  # Check for lookahead bias
-    rolling_ols_beta,       # Benchmark beta calculation
-    align_series,           # Align multiple time series
-    compute_information_coefficient,  # Calculate IC
-)
-```
-
-## Input Data Formats
-
-### Simple Mode (Returns Only)
-
-```python
-# Pandas Series or NumPy arrays
-stock_returns = df['close'].pct_change()
-market_returns = market_df['close'].pct_change()
-```
-
-### Full Mode (OHLCV + Macro)
-
-**Stock/Market OHLCV DataFrame:**
-```
-| Date       | Open   | High   | Low    | Close  | Volume    |
-|------------|--------|--------|--------|--------|-----------|
-| 2020-01-02 | 100.00 | 101.50 | 99.50  | 101.00 | 1000000   |
-| 2020-01-03 | 101.00 | 102.00 | 100.50 | 101.50 | 1200000   |
-```
-
-**Macro DataFrame (optional):**
-```
-| Date       | vix    | fed_rate | unemployment | ...  |
-|------------|--------|----------|--------------|------|
-| 2020-01-02 | 12.5   | 1.75     | 3.6          | ...  |
-| 2020-01-03 | 13.2   | 1.75     | 3.6          | ...  |
-```
-
-## Lookahead Bias Prevention
-
-GRU Dynamic Beta implements strict lookahead bias prevention:
-
-1. **Feature Lagging**: All features are lagged by 1 day (configurable)
-2. **Walk-Forward Validation**: Model only sees historical data at each prediction point
-3. **Expanding Window Scaling**: Scalers are refit on expanding historical data only
-4. **Built-in Validation**: `validate_no_lookahead()` function to verify
-
-```python
-from grubeta.utils import validate_no_lookahead
-
-# Check for lookahead bias
-passed = validate_no_lookahead(
-    results['beta'].values,
-    results['stock_return'].values,
-    results['market_return'].values,
-    initial_size=500
-)
-# Output:
-#   ✓ Beta correlation with return t+1: 0.023
-#   ✓ Beta correlation with return t+5: 0.018
-#   ✓ Beta correlation with return t+10: 0.012
-#   ✓ Beta correlation with return t+20: 0.008
-```
-
-## Examples
+## Use Cases
 
 ### Portfolio Hedging
 
 ```python
-from grubeta import DynamicBeta
-from grubeta.utils import beta_to_hedge_ratio
+from grubeta import estimate_beta
 
-# Estimate beta
-model = DynamicBeta()
-results = model.fit_predict(stock_returns, market_returns)
+result = estimate_beta("AAPL", "SPY")
+current_beta = result["beta"].iloc[-1]
 
-# Current beta
-current_beta = results['beta'].iloc[-1]
-
-# Calculate hedge ratio
-stock_position = 100_000  # $100k position
-spy_price = 450  # SPY price
-
-hedge = beta_to_hedge_ratio(current_beta, stock_position, spy_price)
-print(f"To hedge: short {hedge:.0f} shares of SPY")
+# To hedge $100K in AAPL against market risk:
+portfolio_value = 100_000
+hedge_amount = current_beta * portfolio_value
+print(f"Short ${hedge_amount:,.0f} of SPY to neutralize market exposure")
 ```
 
-### Multi-Asset Analysis
+### Comparing Stocks
 
 ```python
-from grubeta import DynamicBeta, BetaEvaluator
+from grubeta import compare_betas
 
-stocks = ['AAPL', 'GOOGL', 'MSFT', 'AMZN']
-results = {}
-
-model = DynamicBeta(lookback=60)
-
-for stock in stocks:
-    stock_ret = load_returns(stock)
-    results[stock] = model.fit_predict(stock_ret, market_returns)
-    
-# Compare beta dynamics
-import matplotlib.pyplot as plt
-
-fig, ax = plt.subplots(figsize=(12, 6))
-for stock, res in results.items():
-    ax.plot(res['date'], res['beta'], label=stock)
-ax.legend()
-ax.set_title('Dynamic Beta Comparison')
-plt.show()
+# Compare tech vs defensive stocks
+result = compare_betas(["NVDA", "TSLA", "JNJ", "PG"], market="SPY")
+print(result["summary"])
 ```
 
-## Comparison with Other Methods
+### Preset Configurations
 
-| Method | Time-Varying | Captures Non-linearity | Lookahead Free | Walk-Forward |
-|--------|--------------|------------------------|----------------|--------------|
-| Static OLS | ❌ | ❌ | ✅ | N/A |
-| Rolling OLS | ✅ | ❌ | ✅ | ✅ |
-| EWMA | ✅ | ❌ | ✅ | ✅ |
-| Kalman Filter | ✅ | ❌ | ✅ | ✅ |
-| DCC-GARCH | ✅ | Partial | ✅ | ✅ |
-| **GRU Dynamic Beta** | ✅ | ✅ | ✅ | ✅ |
+Most users don't need to tune parameters — just pick a preset:
+
+```python
+# For event studies (captures rapid changes around earnings, crises)
+result = estimate_beta("AAPL", "SPY", preset="responsive")
+
+# For long-term portfolio construction (stable, low-noise estimates)
+result = estimate_beta("AAPL", "SPY", preset="smooth")
+
+# For academic research (all features, maximum rigor)
+result = estimate_beta("AAPL", "SPY", preset="research")
+```
+
+| Preset | Best For | Lookback | Retraining |
+|--------|----------|----------|------------|
+| `default` | General analysis | 3 months | Quarterly |
+| `responsive` | Event studies, tactical allocation | 1 month | Monthly |
+| `smooth` | Strategic portfolio construction | 6 months | Annually |
+| `research` | Academic papers, comprehensive analysis | 3 months | Quarterly + all features |
+
+### Command Line
+
+```bash
+python -m grubeta AAPL SPY
+python -m grubeta AAPL SPY --preset responsive
+python -m grubeta AAPL MSFT GOOGL --market SPY --compare
+python -m grubeta --list-presets
+```
+
+## Examples & Tutorials
+
+| Notebook | Description | Audience |
+|----------|-------------|----------|
+| [Quickstart](examples/01_quickstart.ipynb) | Estimate beta in 3 lines of code | Everyone |
+| [Portfolio Hedging](examples/02_portfolio_hedging.ipynb) | Calculate and apply hedge ratios | Portfolio managers |
+| [Comparing Stocks](examples/03_comparing_stocks.ipynb) | Cross-sectional beta analysis | Analysts |
+| [Research Workflow](examples/04_research_workflow.ipynb) | Full academic pipeline with diagnostics | Researchers |
+| [Complete API Example](examples/complete_example.py) | All API features with synthetic data | Developers |
+
+## Advanced Usage
+
+For users who want fine-grained control, the full API is available:
+
+```python
+from grubeta import DynamicBeta, DynamicBetaConfig, DataPreprocessor, FeatureConfig
+
+# Custom feature engineering
+config = FeatureConfig(
+    include_technicals=True,
+    include_macro=True,
+    lag_features=True,  # Prevents lookahead bias
+)
+preprocessor = DataPreprocessor(config)
+features = preprocessor.prepare(stock_df, market_df, macro_df)
+
+# Custom model configuration
+model = DynamicBeta(config=DynamicBetaConfig(
+    lookback=90,
+    lambda_beta=0.05,
+    lambda_alpha=0.5,
+    lambda_alpha_smooth=0.1,
+))
+results = model.fit_predict(**features)
+
+# Evaluation
+from grubeta import BetaEvaluator
+evaluator = BetaEvaluator(output_dir='./results')
+metrics = evaluator.evaluate(results['beta'], results['stock_return'], results['market_return'])
+```
+
+<details>
+<summary><strong>All Configuration Parameters</strong></summary>
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `lookback` | 90 | How many days of history the model sees at each step |
+| `initial_train_size` | 500 | Minimum training samples before first prediction (~2 years) |
+| `wf_step_size` | 126 | How often the model retrains (trading days) |
+| `learning_rate` | 1e-4 | Adam optimizer learning rate |
+| `gru_units` | 128 | Neural network hidden layer size |
+| `dropout_rate` | 0.2 | Regularization strength |
+| `lambda_beta` | 0.05 | Beta smoothness — higher = smoother beta |
+| `lambda_alpha` | 0.5 | Alpha sparsity — higher = alpha pushed closer to zero |
+| `lambda_alpha_smooth` | 0.1 | Alpha smoothness — higher = smoother alpha |
+| `epochs_init` | 40 | Training epochs for initial fit |
+| `epochs_retrain` | 4 | Training epochs for each retraining step |
+
+</details>
+
+## How It Works
+
+<details>
+<summary><strong>Technical Details</strong> (click to expand)</summary>
+
+grubeta uses a **dual-pathway GRU architecture** within the CAPM framework:
+
+```
+Market Features ——→ [GRU] ——→ β(t)
+                               ↓
+                     R_stock = α(t) + β(t) × R_market
+                               ↑
+Stock Features ——→ [GRU] ——→ α(t)
+```
+
+The composite loss function balances four objectives:
+
+```
+L = L_accuracy + λ_β × L_stability + λ_α × L_sparsity + λ_α_smooth × L_alpha_stability
+```
+
+1. **Accuracy**: Huber loss on return predictions
+2. **Beta Stability**: L2 penalty on temporal beta changes
+3. **Alpha Sparsity**: L1 penalty on alpha magnitude (CAPM compliance)
+4. **Alpha Stability**: L2 penalty on temporal alpha changes
+
+### Lookahead Bias Prevention
+
+grubeta implements strict temporal integrity:
+- **Feature lagging**: All inputs delayed by 1+ days
+- **Walk-forward validation**: Model only sees historical data at each prediction point
+- **Point-in-Time scaling**: Feature normalization uses only past data (expanding window)
+- **TemporalCertificate**: Auditable proof of zero lookahead for academic review
+- **Built-in diagnostics**: `validate_no_lookahead()` verifies temporal correctness
+
+### Comparison with Other Methods
+
+| Method | Time-Varying | Non-linear | Lookahead Free | Walk-Forward |
+|--------|:---:|:---:|:---:|:---:|
+| Static OLS | | | ✓ | N/A |
+| Rolling OLS | ✓ | | ✓ | ✓ |
+| EWMA | ✓ | | ✓ | ✓ |
+| Kalman Filter | ✓ | | ✓ | ✓ |
+| DCC-GARCH | ✓ | Partial | ✓ | ✓ |
+| **grubeta** | **✓** | **✓** | **✓** | **✓** |
+
+</details>
+
+## For Researchers
+
+- **Temporal integrity**: All estimates guaranteed lookahead-free via walk-forward validation and point-in-time scaling
+- **Reproducibility**: `TemporalCertificate` provides auditable methodology proof
+- **Benchmarks**: Built-in comparison with rolling OLS, EWMA, and static beta
+- **Diagnostics**: Lookahead bias tests, ADF stationarity tests, Ljung-Box autocorrelation tests
+
+Full API documentation: [grubeta.readthedocs.io](https://grubeta.readthedocs.io)
 
 ## Citation
 
-If you use GRU Dynamic Beta in your research, please cite:
-
 ```bibtex
 @software{grubeta2026,
-  author = {Yılmaz, Ahmet Selim},
-  title = {GRU Dynamic Beta: Neural Network-Based Time-Varying Systematic Risk Estimation},
+  author = {Y{\i}lmaz, Ahmet Selim},
+  title = {grubeta: GRU-based Dynamic Beta Estimation for Time-Varying Systematic Risk},
   year = {2026},
   url = {https://github.com/aslmylmz/grubeta}
 }
 ```
 
-## Related Work
-
-- [arch](https://github.com/bashtage/arch) - GARCH models
-- [pykalman](https://github.com/pykalman/pykalman) - Kalman Filter
-- [statsmodels](https://www.statsmodels.org/) - Statistical models
-- [ta](https://github.com/bukosabino/ta) - Technical Analysis library
-
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ## Changelog
 
