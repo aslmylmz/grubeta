@@ -1,73 +1,137 @@
 Quickstart
 ==========
 
-This guide will get you up and running with GRU Dynamic Beta in 5 minutes.
+This guide will get you up and running with grubeta in 5 minutes.
 
-Your First Beta Estimation
---------------------------
+Estimate Beta in 3 Lines
+-------------------------
 
 The simplest way to estimate dynamic beta:
 
 .. code-block:: python
 
-   import numpy as np
-   from grubeta import DynamicBeta
-   
-   # Your data (daily returns)
-   stock_returns = np.array([...])   # Stock return series
-   market_returns = np.array([...])  # Market index returns
-   
-   # Create model and estimate
-   model = DynamicBeta(lookback=60)
-   results = model.fit_predict(stock_returns, market_returns)
-   
-   # View results
-   print(results.head())
+   from grubeta import estimate_beta
 
-The ``results`` DataFrame contains:
+   result = estimate_beta("AAPL", "SPY")
+   print(result["summary"])
 
-* ``beta`` - Time-varying beta estimates
-* ``alpha`` - Time-varying alpha estimates  
-* ``stock_return`` - Original stock returns
-* ``market_return`` - Original market returns
+This will:
 
-Working with Real Data
-----------------------
+1. Fetch 10 years of AAPL and SPY data via yfinance
+2. Train a GRU model with walk-forward validation
+3. Print a human-readable summary and display a plot
 
-Here's a complete example using pandas:
+The ``result`` dictionary contains:
+
+* ``beta`` - Time-varying beta estimates (pd.Series)
+* ``alpha`` - Time-varying alpha estimates (pd.Series)
+* ``dates`` - Date index
+* ``summary`` - Human-readable summary string
+* ``model`` - Fitted DynamicBeta object (for advanced use)
+* ``results`` - Full DataFrame with all columns
+* ``fig`` - Matplotlib figure (if ``plot=True``)
+
+Using Presets
+-------------
+
+Presets let you pick a configuration without understanding ML parameters:
+
+.. code-block:: python
+
+   from grubeta import estimate_beta, list_presets
+
+   # See available presets
+   print(list_presets())
+
+   # For event studies (captures rapid beta changes)
+   result = estimate_beta("AAPL", "SPY", preset="responsive")
+
+   # For long-term portfolio construction (stable estimates)
+   result = estimate_beta("AAPL", "SPY", preset="smooth")
+
+   # For academic research (enhanced model capacity)
+   result = estimate_beta("AAPL", "SPY", preset="research")
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 30 20 20
+
+   * - Preset
+     - Best For
+     - Lookback
+     - Retraining
+   * - ``default``
+     - General analysis
+     - 3 months (60 days)
+     - Semi-annually (126 days)
+   * - ``responsive``
+     - Event studies, tactical allocation
+     - 6 weeks (30 days)
+     - Monthly (21 days)
+   * - ``smooth``
+     - Strategic portfolio construction
+     - 6 months (120 days)
+     - Annually (252 days)
+   * - ``research``
+     - Academic papers
+     - ~4 months (90 days)
+     - Quarterly (63 days)
+
+Comparing Multiple Stocks
+--------------------------
+
+.. code-block:: python
+
+   from grubeta import compare_betas
+
+   result = compare_betas(["AAPL", "MSFT", "GOOGL"], market="SPY")
+   print(result["summary"])
+
+Using Your Own Data
+--------------------
+
+You can pass pandas Series instead of ticker strings:
 
 .. code-block:: python
 
    import pandas as pd
-   from grubeta import DynamicBeta
-   
-   # Load stock data
-   stock_df = pd.read_csv('AAPL.csv', parse_dates=['Date'])
-   market_df = pd.read_csv('SPY.csv', parse_dates=['Date'])
-   
-   # Calculate returns
-   stock_returns = stock_df['Close'].pct_change().dropna()
-   market_returns = market_df['Close'].pct_change().dropna()
-   
-   # Align dates
-   common_dates = stock_df['Date'][1:].values
-   
-   # Estimate dynamic beta
-   model = DynamicBeta(
-       lookback=60,            # 60-day lookback window
-       lambda_beta=0.05,       # Beta stability weight
-       lambda_alpha=0.5,       # Alpha sparsity weight
-       lambda_alpha_smooth=0.1 # Alpha temporal smoothness weight
-   )
-   
-   results = model.fit_predict(
-       stock_returns.values,
-       market_returns.values,
-       dates=common_dates
-   )
-   
-   # Plot the results
-   model.plot_beta(results, title='AAPL Dynamic Beta')
+   from grubeta import estimate_beta
+
+   # Load your own data
+   stock_returns = pd.read_csv('my_stock.csv', index_col='Date', parse_dates=True)['Return']
+   market_returns = pd.read_csv('my_market.csv', index_col='Date', parse_dates=True)['Return']
+
+   result = estimate_beta(stock_returns, market_returns)
+
+Command Line
+------------
+
+.. code-block:: bash
+
+   python -m grubeta AAPL SPY
+   python -m grubeta AAPL SPY --preset responsive
+   python -m grubeta AAPL MSFT GOOGL --market SPY --compare
+   python -m grubeta --list-presets
+
+Advanced Usage
+--------------
+
+For fine-grained control, use the core API directly:
+
+.. code-block:: python
+
+   from grubeta import DynamicBeta, DynamicBetaConfig
+
+   model = DynamicBeta(config=DynamicBetaConfig(
+       lookback=60,
+       lambda_beta=0.05,
+       lambda_alpha=0.5,
+       lambda_alpha_smooth=0.1,
+   ))
+   results = model.fit_predict(stock_returns, market_returns, dates=dates)
+
+   # View results
+   print(results['beta'].dropna().describe())
 
 Understanding the Output
 ------------------------
@@ -77,34 +141,14 @@ This is the "burn-in" period where the model is training.
 
 .. code-block:: python
 
-   # Check valid estimates
    valid_results = results.dropna()
    print(f"Total observations: {len(results)}")
    print(f"Valid beta estimates: {len(valid_results)}")
-   
-   # Summary statistics
-   print(valid_results['beta'].describe())
-
-Typical output:
-
-.. code-block:: text
-
-   Total observations: 1000
-   Valid beta estimates: 410
-   
-   count    410.000000
-   mean       1.152340
-   std        0.089234
-   min        0.923456
-   25%        1.089123
-   50%        1.145678
-   75%        1.212345
-   max        1.398765
 
 Key Parameters
 --------------
 
-The most important parameters to tune:
+The most important parameters (when using the core API):
 
 .. list-table::
    :header-rows: 1
@@ -132,19 +176,6 @@ The most important parameters to tune:
      - 126
      - Days between model retraining (~6 months).
 
-Example configurations:
-
-.. code-block:: python
-
-   # For volatile stocks (more responsive beta)
-   model = DynamicBeta(lookback=30, lambda_beta=0.01)
-   
-   # For stable, large-cap stocks (smoother beta)
-   model = DynamicBeta(lookback=90, lambda_beta=0.1)
-   
-   # For high-frequency analysis
-   model = DynamicBeta(lookback=20, wf_step_size=21)
-
 Comparing with Benchmarks
 -------------------------
 
@@ -154,14 +185,14 @@ Compare GRU beta against traditional methods:
 
    from grubeta import DynamicBeta, BetaEvaluator
    from grubeta.utils import rolling_ols_beta
-   
+
    # GRU beta
    model = DynamicBeta(lookback=60)
    results = model.fit_predict(stock_returns, market_returns)
-   
+
    # Rolling OLS benchmark
    ols_beta = rolling_ols_beta(stock_returns, market_returns, window=252)
-   
+
    # Compare
    evaluator = BetaEvaluator()
    comparison = evaluator.compare_models(
@@ -185,10 +216,10 @@ Save a trained model for later use:
    model = DynamicBeta(lookback=60)
    model.fit_predict(stock_returns, market_returns)
    model.save('./my_model')
-   
+
    # Load later
    loaded_model = DynamicBeta.load('./my_model')
-   
+
    # Use for new predictions
    new_results = loaded_model.predict(new_stock_returns, new_market_returns)
 
@@ -198,4 +229,5 @@ Next Steps
 * :doc:`user_guide/basic_usage` - More detailed usage examples
 * :doc:`user_guide/advanced_features` - Feature engineering and macro data
 * :doc:`user_guide/evaluation` - Model evaluation and diagnostics
-* :doc:`api/core` - Full API reference
+* :doc:`api/convenience` - Convenience API reference
+* :doc:`api/core` - Full core API reference

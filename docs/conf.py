@@ -42,6 +42,7 @@ autodoc_default_options = {
     'exclude-members': '__weakref__'
 }
 autodoc_typehints = 'description'
+autodoc_mock_imports = ['tensorflow', 'keras']
 autosummary_generate = True
 
 # Napoleon settings (for Google-style docstrings)

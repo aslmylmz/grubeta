@@ -21,10 +21,23 @@ The simplest way to install GRU Dynamic Beta is via pip:
 
    pip install grubeta
 
+Data Installation
+-----------------
+
+To use ticker symbols (e.g., ``"AAPL"``) with the convenience API, install with yfinance:
+
+.. code-block:: bash
+
+   pip install grubeta[data]
+
+This adds:
+
+* ``yfinance`` - Automatic data fetching for stock tickers
+
 Full Installation
 -----------------
 
-To install with all optional dependencies (technical analysis, statistical tests):
+To install with all optional dependencies (data fetching, technical analysis, statistical tests):
 
 .. code-block:: bash
 
@@ -32,6 +45,7 @@ To install with all optional dependencies (technical analysis, statistical tests
 
 This includes:
 
+* ``yfinance`` - Automatic data fetching for stock tickers
 * ``ta`` - Technical analysis indicators
 * ``statsmodels`` - Statistical tests (ADF, Ljung-Box)
 * ``seaborn`` - Enhanced visualizations

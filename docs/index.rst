@@ -13,27 +13,26 @@ GRU Dynamic Beta
    :target: https://github.com/aslmylmz/grubeta/blob/main/LICENSE
    :alt: License
 
-**GRU Dynamic Beta** is a Python library for estimating time-varying systematic 
-risk (beta) using Gated Recurrent Unit neural networks within the CAPM framework.
+Estimate how a stock's market sensitivity (beta) changes over time,
+powered by neural networks with built-in safeguards against lookahead bias.
 
 .. code-block:: python
 
-   from grubeta import DynamicBeta
-   
-   model = DynamicBeta(lookback=60)
-   results = model.fit_predict(stock_returns, market_returns)
-   
-   print(results['beta'].tail())
-   model.plot_beta(results)
+   from grubeta import estimate_beta
+
+   result = estimate_beta("AAPL", "SPY")
+   print(result["summary"])
 
 Key Features
 ------------
 
+* **Simple convenience API** - Estimate beta in 3 lines of code with ``estimate_beta()``
+* **Named presets** - ``"default"``, ``"responsive"``, ``"smooth"``, ``"research"`` — no ML tuning needed
 * **GRU-based estimation** - Captures complex temporal patterns in beta dynamics
-* **Walk-forward validation** - Prevents lookahead bias with proper out-of-sample testing  
+* **Walk-forward validation** - Prevents lookahead bias with proper out-of-sample testing
 * **Composite loss function** - Balances prediction accuracy, beta stability, alpha sparsity, and alpha temporal smoothness
-* **Flexible input modes** - Use simple returns or full feature engineering
 * **Built-in evaluation** - Comprehensive metrics and benchmark comparisons
+* **CLI support** - ``python -m grubeta AAPL SPY`` from the command line
 * **Production-ready** - GPU support, model persistence, and extensive documentation
 
 Quick Start
@@ -43,29 +42,39 @@ Install the package:
 
 .. code-block:: bash
 
-   pip install grubeta
+   pip install grubeta[data]   # includes yfinance for ticker support
 
-Basic usage:
+Estimate dynamic beta:
 
 .. code-block:: python
 
-   import pandas as pd
-   import numpy as np
-   from grubeta import DynamicBeta
+   from grubeta import estimate_beta
 
-   # 1. Generate dummy data so the example "just works"
-   dates = pd.date_range('2020-01-01', periods=1000)
-   market_returns = np.random.normal(0.0005, 0.01, 1000)
-   # Stock return = beta * market + noise (simulating a beta of 1.2)
-   stock_returns = 1.2 * market_returns + np.random.normal(0, 0.005, 1000)
+   # Estimate AAPL's time-varying beta relative to S&P 500
+   result = estimate_beta("AAPL", "SPY")
+   print(result["summary"])
 
-   # 2. Fit and predict
-   model = DynamicBeta(lookback=60)
+   # Access the raw beta series
+   result["beta"].tail()
+
+Or use presets for different use cases:
+
+.. code-block:: python
+
+   # For event studies (captures rapid changes)
+   result = estimate_beta("AAPL", "SPY", preset="responsive")
+
+   # For long-term portfolio construction
+   result = estimate_beta("AAPL", "SPY", preset="smooth")
+
+For advanced usage with full control:
+
+.. code-block:: python
+
+   from grubeta import DynamicBeta, DynamicBetaConfig
+
+   model = DynamicBeta(config=DynamicBetaConfig(lookback=60, lambda_beta=0.05))
    results = model.fit_predict(stock_returns, market_returns, dates=dates)
-   
-   # 3. See the results
-   print(results.tail())
-   model.plot_beta(results)
 
 Documentation
 -------------
@@ -93,6 +102,7 @@ Documentation
 
    api/convenience
    api/presets
+   api/exceptions
    api/core
    api/preprocessing
    api/models
