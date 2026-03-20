@@ -5,9 +5,30 @@ Sphinx configuration for GRU Dynamic Beta documentation.
 import os
 import sys
 from datetime import datetime
+from unittest.mock import MagicMock
 
 # Add package to path for autodoc
 sys.path.insert(0, os.path.abspath('..'))
+
+# Mock heavy dependencies that are NOT in docs/requirements.txt.
+# Only mock tensorflow/keras (too large for RTD) and optional deps
+# that aren't needed for doc generation. Do NOT mock scipy, numpy,
+# pandas, scikit-learn, pydantic — those are in docs/requirements.txt.
+_MOCK_MODULES = [
+    'tensorflow', 'tensorflow.keras', 'tensorflow.keras.layers',
+    'tensorflow.keras.optimizers', 'tensorflow.keras.callbacks',
+    'tensorflow.keras.models', 'tensorflow.keras.backend',
+    'tensorflow.keras.regularizers', 'tensorflow.keras.initializers',
+    'tensorflow.keras.utils', 'tensorflow.python',
+    'keras', 'keras.layers', 'keras.models',
+    'ta', 'ta.momentum', 'ta.trend', 'ta.volatility',
+    'yfinance',
+    'statsmodels', 'statsmodels.tsa', 'statsmodels.tsa.stattools',
+    'statsmodels.stats', 'statsmodels.stats.diagnostic',
+    'seaborn',
+]
+for mod_name in _MOCK_MODULES:
+    sys.modules[mod_name] = MagicMock()
 
 # -- Project information -----------------------------------------------------
 
@@ -42,7 +63,7 @@ autodoc_default_options = {
     'exclude-members': '__weakref__'
 }
 autodoc_typehints = 'description'
-autodoc_mock_imports = ['tensorflow', 'keras']
+autodoc_mock_imports = ['tensorflow', 'keras', 'yfinance', 'ta', 'statsmodels', 'seaborn', 'scipy']
 autosummary_generate = True
 
 # Napoleon settings (for Google-style docstrings)

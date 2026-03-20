@@ -105,8 +105,10 @@ Examples:
 
     # Save CSV if requested
     if args.output:
-        result["beta"].to_csv(args.output)
-        print(f"\nBeta series saved to {args.output}")
+        beta_data = result.get("betas") if "betas" in result else result.get("beta")
+        if beta_data is not None:
+            beta_data.to_csv(args.output)
+            print(f"\nBeta series saved to {args.output}")
 
     # Generate report if requested
     if args.report:

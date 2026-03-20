@@ -127,7 +127,7 @@ def format_summary(
     avg_beta = float(np.mean(valid))
     min_beta = float(np.min(valid))
     max_beta = float(np.max(valid))
-    stability = float(np.std(np.diff(valid)))
+    stability = float(np.std(np.diff(valid))) if len(valid) > 1 else 0.0
 
     # Date range
     if dates is not None:
@@ -390,21 +390,35 @@ def compare_betas(
     import matplotlib.pyplot as plt
 
     all_results = {}
+    failed = {}
 
     for ticker in stocks:
         print(f"\n{'='*50}")
         print(f"Estimating beta for {ticker}...")
         print(f"{'='*50}")
-        result = estimate_beta(
-            stock=ticker,
-            market=market,
-            start=start,
-            end=end,
-            preset=preset,
-            plot=False,
-            verbose=True,
+        try:
+            result = estimate_beta(
+                stock=ticker,
+                market=market,
+                start=start,
+                end=end,
+                preset=preset,
+                plot=False,
+                verbose=True,
+            )
+            all_results[ticker] = result
+        except Exception as e:
+            print(f"  WARNING: Failed for {ticker}: {e}")
+            failed[ticker] = str(e)
+
+    if not all_results:
+        raise ValueError(
+            f"All stocks failed. Errors:\n"
+            + "\n".join(f"  {t}: {e}" for t, e in failed.items())
         )
-        all_results[ticker] = result
+
+    # Use only successful tickers going forward
+    stocks = [t for t in stocks if t in all_results]
 
     # Build DataFrame with proper date alignment
     beta_dict = {}
@@ -522,7 +536,11 @@ def quick_report(
     img_b64 = base64.b64encode(buf.read()).decode("utf-8")
 
     # Build HTML
-    summary_html = result["summary"].replace("\n", "<br>")
+    import html as html_mod
+
+    stock_name = html_mod.escape(stock_name)
+    market_name = html_mod.escape(market_name)
+    summary_html = html_mod.escape(result["summary"]).replace("\n", "<br>")
 
     valid_betas = beta.dropna()
     stats_rows = ""

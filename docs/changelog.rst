@@ -3,6 +3,29 @@ Changelog
 
 All notable changes to GRU Dynamic Beta will be documented here.
 
+[0.2.0] - Unreleased
+---------------------
+
+Added
+~~~~~
+
+* High-level convenience API: ``estimate_beta()``, ``compare_betas()``, ``quick_report()``
+* Named configuration presets: default, responsive, smooth, research
+* Command-line interface: ``python -m grubeta AAPL SPY``
+* Custom exception classes with finance-friendly error messages
+* 4 Jupyter notebook tutorials (quickstart, hedging, comparison, research)
+* ``format_summary()`` for human-readable beta summaries
+* ``grubeta[data]`` optional dependency group for yfinance
+
+Changed
+~~~~~~~
+
+* README rewritten with finance-first framing
+* Project description updated in pyproject.toml
+* Research preset description clarified (enhanced model capacity, not full features via convenience API)
+* Walk-forward train window now derives from config instead of hardcoded 500
+* TemporalCertificate uses actual package version
+
 [0.1.3] - 2026-02-20
 ---------------------
 
@@ -29,8 +52,18 @@ Fixed
 * Migrated to Pydantic V2 validators (``@field_validator``, ``ConfigDict``)
 * Removed duplicate line in ``_create_return_features``
 * Aligned minimum Python version to 3.9 across all metadata
-* Reverted ``initial_beta`` default to ``0.0`` for stability
+* Added ``initial_beta`` (default=1.0) and ``initial_alpha`` (default=0.0) config parameters
 * Removed stray ``verify_revert.py`` from repository
+
+[0.1.1] - 2026-02-06
+---------------------
+
+Added
+~~~~~
+
+* Fixed missing ``pydantic`` dependency
+* Validated "Zero Defects" status
+* Improved build configuration
 
 [0.1.0] - 2026-01-23
 ---------------------
@@ -64,7 +97,7 @@ Technical Details
 Future Plans
 ------------
 
-[0.2.0] - Planned
+[0.3.0] - Planned
 ~~~~~~~~~~~~~~~~~
 
 * Attention mechanism for beta pathway
@@ -73,7 +106,7 @@ Future Plans
 * Real-time prediction mode
 * Extended benchmark comparisons
 
-[0.3.0] - Planned
+[0.4.0] - Planned
 ~~~~~~~~~~~~~~~~~
 
 * Multi-asset portfolio beta estimation
