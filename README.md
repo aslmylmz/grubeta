@@ -235,7 +235,7 @@ Full API documentation: [grubeta.readthedocs.io](https://grubeta.readthedocs.io)
 
 ```bibtex
 @software{grubeta2026,
-  author = {YILMAZ, Ahmet Selim},
+  author = {Yılmaz, Ahmet Selim},
   title = {grubeta: GRU-based Dynamic Beta Estimation for Time-Varying Systematic Risk},
   year = {2026},
   url = {https://github.com/aslmylmz/grubeta}
