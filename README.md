@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://img.shields.io/pypi/v/grubeta.svg)](https://pypi.org/project/grubeta/)
 [![Documentation Status](https://readthedocs.org/projects/grubeta/badge/?version=latest)](https://grubeta.readthedocs.io)
+[![DOI](https://zenodo.org/badge/1140537679.svg)](https://doi.org/10.5281/zenodo.20592151)
 
 > Estimate how a stock's market sensitivity (beta) changes over time,
 > powered by neural networks with built-in safeguards against lookahead bias.
